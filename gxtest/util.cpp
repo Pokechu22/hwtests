@@ -16,7 +16,10 @@
 
 namespace GXTest
 {
-#define TEST_BUFFER_SIZE (640 * 528 * 4)
+#define DEFAULT_EFB_WIDTH 640
+#define DEFAULT_EFB_HEIGHT 528
+
+#define TEST_BUFFER_SIZE (DEFAULT_EFB_WIDTH * DEFAULT_EFB_HEIGHT * 4)
 static u32* test_buffer;
 
 #ifdef ENABLE_DEBUG_DISPLAY
@@ -64,11 +67,11 @@ void Init()
   CGX_Init();
 
   GX_SetCopyClear(background, 0x00ffffff);
-  GX_SetViewport(0, 0, 640, 528, 0, 1);
-  GX_SetScissor(0, 0, 640, 528);
+  GX_SetViewport(0, 0, DEFAULT_EFB_WIDTH, DEFAULT_EFB_HEIGHT, 0, 1);
+  GX_SetScissor(0, 0, DEFAULT_EFB_WIDTH, DEFAULT_EFB_HEIGHT);
 #endif
 
-  test_buffer = (u32*)memalign(32, 640 * 528 * 4);
+  test_buffer = (u32*)memalign(32, TEST_BUFFER_SIZE);
 
   GX_SetTexCopySrc(0, 0, 100, 100);
   GX_SetTexCopyDst(100, 100, GX_TF_RGBA8, false);
@@ -305,12 +308,13 @@ void Quad::Draw()
 }
 
 void CopyToTestBuffer(int left_most_pixel, int top_most_pixel, int right_most_pixel,
-                      int bottom_most_pixel)
+                      int bottom_most_pixel, bool clear)
 {
   // TODO: Do we need to impose additional constraints on the parameters?
   memset(test_buffer, 0, TEST_BUFFER_SIZE);
   CGX_DoEfbCopyTex(left_most_pixel, top_most_pixel, right_most_pixel - left_most_pixel + 1,
-                   bottom_most_pixel - top_most_pixel + 1, 0x6 /*RGBA8*/, false, test_buffer);
+                   bottom_most_pixel - top_most_pixel + 1, 0x6 /*RGBA8*/, false, test_buffer,
+                   false, clear);
 }
 
 Vec4<int> GetTevOutput(const GenMode& genmode, const TevStageCombiner::ColorCombiner& last_cc,
@@ -448,5 +452,23 @@ Vec4<int> GetTevOutput(const GenMode& genmode, const TevStageCombiner::ColorComb
   result.b = result1b + ((result2b & 0x10) ? (-0x400 + ((result2b & 0xF) << 6)) : (result2b << 6));
   result.a = result1a + ((result2a & 0x10) ? (-0x400 + ((result2a & 0xF) << 6)) : (result2a << 6));
   return result;
+}
+
+u32 GetEfbWidth()
+{
+#ifdef ENABLE_DEBUG_DISPLAY
+  return rmode->fbWidth;
+#else
+  return DEFAULT_EFB_WIDTH;
+#endif
+}
+
+u32 GetEfbHeight()
+{
+#ifdef ENABLE_DEBUG_DISPLAY
+  return rmode->efbHeight;
+#else
+  return DEFAULT_EFB_HEIGHT;
+#endif
 }
 }
