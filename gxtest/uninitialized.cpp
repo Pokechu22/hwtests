@@ -73,6 +73,8 @@ static void SetVertexFormat(bool has_color_0, bool has_color_1) {
   s_has_color_0 = has_color_0;
   s_has_color_1 = has_color_1;
 
+  u32 numcolors = 0;
+
   VAT vtxattr;
   TVtxDesc vtxdesc;
   vtxattr.g0.Hex = 0;
@@ -89,12 +91,14 @@ static void SetVertexFormat(bool has_color_0, bool has_color_1) {
     vtxattr.g0.Color0Elements = VA_TYPE_CLR_RGBA;
     vtxattr.g0.Color0Comp = VA_FMT_RGBA8;
     vtxdesc.Color0 = VTXATTR_DIRECT;
+    numcolors++;
   }
   if (has_color_1)
   {
     vtxattr.g0.Color1Elements = VA_TYPE_CLR_RGBA;
     vtxattr.g0.Color1Comp = VA_FMT_RGBA8;
     vtxdesc.Color1 = VTXATTR_DIRECT;
+    numcolors++;
   }
 
   // TODO: Figure out what this does and why it needs to be 1 for Dolphin not to error out
@@ -107,6 +111,12 @@ static void SetVertexFormat(bool has_color_0, bool has_color_1) {
   CGX_LOAD_CP_REG(0x70, vtxattr.g0.Hex);
   CGX_LOAD_CP_REG(0x80, vtxattr.g1.Hex);
   CGX_LOAD_CP_REG(0x90, vtxattr.g2.Hex);
+
+  // Set the vertex spec, which has the number of color channels, normals, and texture coordinates
+  // We have 0-2 colors only
+  // Not setting this causes a hang on actual hardware
+  CGX_BEGIN_LOAD_XF_REGS(0x1008, 1);
+  wgPipe->U32 = numcolors;
 }
 
 static void DrawPoint(u32 x, u32 y, u32 color_0, u32 color_1) {
