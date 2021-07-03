@@ -563,15 +563,12 @@ union GenMode
 
 union LPSize
 {
-  struct
-  {
-    u32 linesize : 8;   // in 1/6th pixels
-    u32 pointsize : 8;  // in 1/6th pixels
-    u32 lineoff : 3;
-    u32 pointoff : 3;
-    u32 lineaspect : 1;  // interlacing: adjust for pixels having AR of 1/2
-    u32 padding : 1;
-  };
+  BitField<0, 8, u32> linesize;   // in 1/6th pixels
+  BitField<8, 8, u32> pointsize;  // in 1/6th pixels
+  BitField<16, 3, u32> lineoff;
+  BitField<19, 3, u32> pointoff;
+  // interlacing: adjust for pixels having AR of 1/2
+  BitField<22, 1, u32> adjust_for_aspect_ratio;
   u32 hex;
 };
 

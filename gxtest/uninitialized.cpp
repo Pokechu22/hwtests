@@ -10,9 +10,31 @@
 #include "gxtest/cgx_defaults.h"
 #include "gxtest/util.h"
 
+// Should be odd.  Works fine on console at 5, and on the emulator at 1 or 5; it's not clear why 1 doesn't work on console
+#define SCALE 5
+
 static bool s_has_color_0 = false, s_has_color_1 = false;
 
-static void PerformInitalSetup() {
+static void WaitForInput()
+{
+  /*do
+  {
+    VIDEO_WaitVSync();
+    WPAD_ScanPads();
+  } while (~WPAD_ButtonsDown(0) & WPAD_BUTTON_A);*/
+}
+
+static void PerformCopyAndClear()
+{
+  const u32 x = GXTest::GetEfbWidth() / 2;
+  const u32 y = GXTest::GetEfbHeight() / 2;
+
+  GXTest::CopyToTestBuffer(x, y, x + 32 * SCALE - 1, y + 32 * SCALE - 1, true);
+  CGX_WaitForGpuToFinish();
+}
+
+static void PerformInitalSetup()
+{
   // Set clear color to #c080c0
   CGX_LOAD_BP_REG(BPMEM_CLEAR_AR << 24 | 0x00c0);
   CGX_LOAD_BP_REG(BPMEM_CLEAR_GB << 24 | 0x80c0);
@@ -48,9 +70,13 @@ static void PerformInitalSetup() {
   ctrl.early_ztest = 0;
   CGX_LOAD_BP_REG(ctrl.hex);
 
+  LPSize lpsize;
+  lpsize.hex = BPMEM_LINEPTWIDTH << 24;
+  lpsize.pointsize = 6 * SCALE;
+  CGX_LOAD_BP_REG(lpsize.hex);
+
   // Perform an initial clear now that the color format is set
-  GXTest::CopyToTestBuffer(0, 0, 31, 31, true);
-  CGX_WaitForGpuToFinish();
+  PerformCopyAndClear();
 
   /* TODO: Should reset this matrix..
   float mtx[3][4];
@@ -124,13 +150,18 @@ static void DrawPoint(u32 x, u32 y, u32 color_0, u32 color_1) {
 
   wgPipe->U8 = 0xB8;  // draw points
   wgPipe->U16 = 1;    // 1 vertex
-  wgPipe->F32 = f32(x) - GXTest::GetEfbWidth()/2 + 1;
-  wgPipe->F32 = -f32(y) + GXTest::GetEfbHeight()/2 - 1;
+  wgPipe->F32 = +(f32(x) * SCALE + (SCALE - 1)/2 + 1);
+  wgPipe->F32 = -(f32(y) * SCALE + (SCALE - 1)/2 + 1);
   wgPipe->F32 = 1.0f;
   if (s_has_color_0)
     wgPipe->U32 = color_0;
   if (s_has_color_1)
     wgPipe->U32 = color_1;
+}
+
+static GXTest::Vec4<u8> ReadTestBuffer(u32 x, u32 y)
+{
+  return GXTest::ReadTestBuffer(x * SCALE + (SCALE - 1) / 2, y * SCALE + (SCALE - 1) / 2, 32 * SCALE);
 }
 
 void TestTest()
@@ -152,14 +183,13 @@ void TestTest()
   }
 
   GXTest::DebugDisplayEfbContents();
-  GXTest::CopyToTestBuffer(0, 0, 31, 31, true);
-  CGX_WaitForGpuToFinish();
+  PerformCopyAndClear();
 
   for (int x = 0; x < 32; x++)
   {
     for (int y = 0; y < 32; y++)
     {
-      GXTest::Vec4<u8> result = GXTest::ReadTestBuffer(x, y, 32);
+      GXTest::Vec4<u8> result = ReadTestBuffer(x, y);
       if (x == y)
         DO_TEST(result.r == x, "Color was not set at x=%d, y=%d - got %02x, wanted %02x",
                 x, y, result.r, x);
@@ -197,13 +227,12 @@ void TestUninitSimple()
   }
 
   GXTest::DebugDisplayEfbContents();
-  GXTest::CopyToTestBuffer(0, 0, 31, 31, true);
-  CGX_WaitForGpuToFinish();
+  PerformCopyAndClear();
 
   for (int x = 0; x < 32; x++)
   {
     u8 expected_color = (x >= 16) ? (x - 16) * 7 : 0;
-    GXTest::Vec4<u8> result = GXTest::ReadTestBuffer(x, 0, 32);
+    GXTest::Vec4<u8> result = ReadTestBuffer(x, 0);
     DO_TEST(result.r == expected_color, "Wrong color at x=%d - got %02x, expected %02x",
             x, result.r, expected_color);
   }
@@ -253,15 +282,14 @@ void TestUninitIncrement()
   }
 
   GXTest::DebugDisplayEfbContents();
-  GXTest::CopyToTestBuffer(0, 0, 31, 31, true);
-  CGX_WaitForGpuToFinish();
+  PerformCopyAndClear();
 
   for (int x = 0; x < 32; x++)
   {
-    GXTest::Vec4<u8> result = GXTest::ReadTestBuffer(x, 1, 32);
+    GXTest::Vec4<u8> result = ReadTestBuffer(x, 1);
     DO_TEST(result.r == 16*7, "Wrong color at x=%d, y=1 - got %02x, expected %02x",
             x, result.r, 16*7);
-    result = GXTest::ReadTestBuffer(x, 2, 32);
+    result = ReadTestBuffer(x, 2);
     DO_TEST(result.r == (16^8)*7, "Wrong color at x=%d, y=2 - got %02x, expected %02x",
             x, result.r, (16^8)*7);
   }
@@ -329,15 +357,14 @@ void TestUninitSeparate()
   }
 
   GXTest::DebugDisplayEfbContents();
-  GXTest::CopyToTestBuffer(0, 0, 31, 31, true);
-  CGX_WaitForGpuToFinish();
+  PerformCopyAndClear();
 
   c0 = 32;
   c1 = 32;
   for (int x = 0; x < 32; x++)
   {
-    GXTest::Vec4<u8> result_0 = GXTest::ReadTestBuffer(x, 1, 32);
-    GXTest::Vec4<u8> result_1 = GXTest::ReadTestBuffer(x, 2, 32);
+    GXTest::Vec4<u8> result_0 = ReadTestBuffer(x, 1);
+    GXTest::Vec4<u8> result_1 = ReadTestBuffer(x, 2);
 
     u8 expected_0 = ((c0 - 16) * 7) & 0xff;
     u8 expected_1 = ((c1 - 16) * 7) & 0xff;
@@ -365,9 +392,13 @@ int main()
   GXTest::Init();
 
   TestTest();
+  WaitForInput();
   TestUninitSimple();
+  WaitForInput();
   TestUninitIncrement();
+  WaitForInput();
   TestUninitSeparate();
+  WaitForInput();
 
   network_printf("Shutting down...\n");
   network_shutdown();
