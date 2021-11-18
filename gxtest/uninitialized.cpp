@@ -17,11 +17,11 @@ static bool s_has_color_0 = false, s_has_color_1 = false;
 
 static void WaitForInput()
 {
-  /*do
+  do
   {
     VIDEO_WaitVSync();
     WPAD_ScanPads();
-  } while (~WPAD_ButtonsDown(0) & WPAD_BUTTON_A);*/
+  } while (~WPAD_ButtonsDown(0) & WPAD_BUTTON_A);
 }
 
 static void PerformCopyAndClear()
