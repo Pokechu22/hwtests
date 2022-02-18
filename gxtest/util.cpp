@@ -305,12 +305,13 @@ void Quad::Draw()
 }
 
 void CopyToTestBuffer(int left_most_pixel, int top_most_pixel, int right_most_pixel,
-                      int bottom_most_pixel)
+                      int bottom_most_pixel, bool clear)
 {
   // TODO: Do we need to impose additional constraints on the parameters?
   memset(test_buffer, 0, TEST_BUFFER_SIZE);
+  DCFlushRange(test_buffer, TEST_BUFFER_SIZE);
   CGX_DoEfbCopyTex(left_most_pixel, top_most_pixel, right_most_pixel - left_most_pixel + 1,
-                   bottom_most_pixel - top_most_pixel + 1, 0x6 /*RGBA8*/, false, test_buffer);
+                   bottom_most_pixel - top_most_pixel + 1, 0x6 /*RGBA8*/, false, test_buffer, false, clear);
 }
 
 Vec4<int> GetTevOutput(const GenMode& genmode, const TevStageCombiner::ColorCombiner& last_cc,

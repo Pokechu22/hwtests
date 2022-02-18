@@ -17,6 +17,7 @@
 #include "gxtest/XFMemory.h"
 
 #include "cgx.h"
+#include "common/hwtests.h"
 
 typedef float f32;
 
@@ -165,7 +166,7 @@ void CGX_DoEfbCopyTex(u16 left, u16 top, u16 width, u16 height, u8 dest_format,
   reg.clamp_bottom = true;
   CGX_LOAD_BP_REG(reg.Hex);
 
-  DCFlushRange(dest, GX_GetTexBufferSize(width, height, GX_TF_RGBA8, GX_FALSE, 1));
+  DCInvalidateRange(dest, GX_GetTexBufferSize(width, height, GX_TF_RGBA8, GX_FALSE, 1));
 }
 
 void CGX_DoEfbCopyXfb(u16 left, u16 top, u16 width, u16 src_height, u16 dst_height, void* dest,
@@ -213,8 +214,11 @@ void CGX_ForcePipelineFlush()
   wgPipe->U32 = 0;
 }
 
-static void __CGXFinishInterruptHandler([[maybe_unused]] u32 irq, [[maybe_unused]] void* ctx)
+static u32 s_irq, s_reg;
+static void __CGXFinishInterruptHandler(u32 irq, [[maybe_unused]] void* ctx)
 {
+  s_irq = irq;
+  s_reg = _peReg[5];
   _peReg[5] = (_peReg[5] & ~0x08) | 0x08;
   _cgxfinished = 1;
 
@@ -236,4 +240,5 @@ void CGX_WaitForGpuToFinish()
     LWP_ThreadSleep(_cgxwaitfinish);
 
   _CPU_ISR_Restore(level);
+  network_printf("Interrupt %x %x\n", s_irq, s_reg);
 }
