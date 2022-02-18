@@ -12,10 +12,10 @@
 #include "gxtest/cgx_defaults.h"
 #include "gxtest/util.h"
 
-// Restrict the copy filter values to 0-64, instead of 0-63*3
-#define SIMPLE_COPY_FILTER_COEFS
-// Only use gamma of 1.0, instead of all values
-#define SIMPLE_GAMMA
+// Use all copy filter values (0-63*3), instead of just 0-64
+#define FULL_COPY_FILTER_COEFS true
+// Use all gamma values, instead of just 1.0 (0)
+#define FULL_GAMMA true
 
 static void FillEFB(u8 a, u8 r, u8 g, u8 b)
 {
@@ -40,17 +40,17 @@ enum class Gamma : u8
   Invalid2_2 = 3,  // Behaves the same as Gamma2_2?
 };
 
-#ifdef SIMPLE_GAMMA
+#if FULL_GAMMA
+static const std::array<Gamma, 4> GAMMA_VALUES = { Gamma::Gamma1_0, Gamma::Gamma1_7, Gamma::Gamma2_2, Gamma::Invalid2_2 };
+#else
 // For now Dolphin doesn't implement gamma for EFB copies
 static const std::array<Gamma, 1> GAMMA_VALUES = { Gamma::Gamma1_0 };
-#else
-static const std::array<Gamma, 4> GAMMA_VALUES = { Gamma::Gamma1_0, Gamma::Gamma1_7, Gamma::Gamma2_2, Gamma::Invalid2_2 };
 #endif
 
-#ifdef SIMPLE_COPY_FILTER_COEFS
-#define MAX_COPY_FILTER 64
-#else
+#if FULL_COPY_FILTER_COEFS
 #define MAX_COPY_FILTER 63*3
+#else
+#define MAX_COPY_FILTER 64
 #endif
 void SetCopyFilter(u8 copy_filter_sum)
 {
@@ -135,6 +135,8 @@ int main()
   WPAD_Init();
 
   GXTest::Init();
+  network_printf("FULL_COPY_FILTER_COEFS: %s\n", FULL_COPY_FILTER_COEFS ? "true" : "false");
+  network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
 
   for (u32 i = 0; i < 256; i++)
   {
