@@ -12,10 +12,13 @@
 #include "gxtest/cgx_defaults.h"
 #include "gxtest/util.h"
 
+// Restrict the copy filter values to 0-64, instead of 0-63*3
+#define SIMPLE_COPY_FILTER_COEFS
+// Only use gamma of 1.0, instead of all values
+#define SIMPLE_GAMMA
+
 static void FillEFB(u8 a, u8 r, u8 g, u8 b)
 {
-  GX_SetDither(false);
-
   PE_CONTROL ctrl;
   ctrl.hex = BPMEM_ZCOMPARE << 24;
   ctrl.pixel_format = PIXELFMT_RGB8_Z24;
@@ -37,12 +40,18 @@ enum class Gamma : u8
   Invalid2_2 = 3,  // Behaves the same as Gamma2_2?
 };
 
-// static const std::array<Gamma, 4> GAMMA_VALUES = { Gamma::Gamma1_0, Gamma::Gamma1_7, Gamma::Gamma2_2, Gamma::Invalid2_2 };
-// For now Dolphin doesn't implement Gamma for EFB copies
+#ifdef SIMPLE_GAMMA
+// For now Dolphin doesn't implement gamma for EFB copies
 static const std::array<Gamma, 1> GAMMA_VALUES = { Gamma::Gamma1_0 };
+#else
+static const std::array<Gamma, 4> GAMMA_VALUES = { Gamma::Gamma1_0, Gamma::Gamma1_7, Gamma::Gamma2_2, Gamma::Invalid2_2 };
+#endif
 
-// #define MAX_COPY_FILTER 63*3
+#ifdef SIMPLE_COPY_FILTER_COEFS
 #define MAX_COPY_FILTER 64
+#else
+#define MAX_COPY_FILTER 63*3
+#endif
 void SetCopyFilter(u8 copy_filter_sum)
 {
   // Each field in the copy filter ranges from 0-63, and the middle 3 values
@@ -57,7 +66,7 @@ void SetCopyFilter(u8 copy_filter_sum)
     w3 = std::min<u8>(copy_filter_sum - 63, 63);
   u8 w5 = 0;
   if (copy_filter_sum > 63*2)
-    w4 = std::min<u8>(copy_filter_sum - 63 * 2, 63);
+    w5 = std::min<u8>(copy_filter_sum - 63 * 2, 63);
 
   u32 copy_filter_reg_0 = u32(w3) << 12 | u32(w4) << 18;
   u32 copy_filter_reg_1 = u32(w5);
@@ -66,7 +75,7 @@ void SetCopyFilter(u8 copy_filter_sum)
   CGX_LOAD_BP_REG(BPMEM_COPYFILTER1 << 24 | copy_filter_reg_1);
 }
 
-u8 Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
+std::pair<u8, float> Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
 {
   float new_value = value;
   // Apply copy filter
@@ -92,7 +101,7 @@ u8 Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
   }
   // Convert back from [0, 1] to [0, 255]
   new_value *= 255;
-  return static_cast<u8>(new_value);
+  return std::make_pair(static_cast<u8>(std::round(std::min(new_value, 255.f))), new_value);
 }
 
 u8 GetActualValue(Gamma gamma)
@@ -111,9 +120,9 @@ void CopyFilterTest(u8 value)
     SetCopyFilter(copy_filter_sum);
     for (Gamma gamma : GAMMA_VALUES)
     {
-      u8 expected = Predict(value, copy_filter_sum, gamma);
+      auto expected = Predict(value, copy_filter_sum, gamma);
       u8 actual = GetActualValue(gamma);
-      DO_TEST(actual == expected, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d, was %d", value, copy_filter_sum, static_cast<u8>(gamma), expected, actual);
+      DO_TEST(actual == expected.first, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d (%f), was %d", value, copy_filter_sum, static_cast<u8>(gamma), expected.first, expected.second, actual);
     }
   }
 
@@ -131,6 +140,10 @@ int main()
   {
     FillEFB(0, i, 0, 0);
     CopyFilterTest(static_cast<u8>(i));
+
+    WPAD_ScanPads();
+    if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
+      break;
   }
 
   network_printf("Shutting down...\n");
