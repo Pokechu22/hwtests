@@ -148,7 +148,7 @@ void CGX_LoadProjectionMatrixOrthographic(float mtx[4][4])
 }
 
 void CGX_DoEfbCopyTex(u16 left, u16 top, u16 width, u16 height, u8 dest_format,
-                      bool copy_to_intensity, void* dest, bool scale_down, bool clear)
+                      bool copy_to_intensity, void* dest, bool scale_down, bool clear, u8 gamma)
 {
   assert(left <= 1023);
   assert(top <= 1023);
@@ -176,6 +176,7 @@ void CGX_DoEfbCopyTex(u16 left, u16 top, u16 width, u16 height, u8 dest_format,
   UPE_Copy reg;
   reg.Hex = BPMEM_TRIGGER_EFB_COPY << 24;
   reg.target_pixel_format = ((dest_format << 1) & 0xE) | (dest_format >> 3);
+  reg.gamma = gamma;
   reg.half_scale = scale_down;
   reg.clear = clear;
   reg.intensity_fmt = copy_to_intensity;

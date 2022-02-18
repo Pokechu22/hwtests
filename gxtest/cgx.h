@@ -66,7 +66,7 @@ void CGX_LoadProjectionMatrixOrthographic(float mtx[4][4]);
 
 void CGX_DoEfbCopyTex(u16 left, u16 top, u16 width, u16 height, u8 dest_format,
                       bool copy_to_intensity, void* dest, bool scale_down = false,
-                      bool clear = false);
+                      bool clear = false, u8 gamma = 0);
 
 // TODO: Add support for other parameters...
 void CGX_DoEfbCopyXfb(u16 left, u16 top, u16 width, u16 src_height, u16 dst_height, void* dest,
