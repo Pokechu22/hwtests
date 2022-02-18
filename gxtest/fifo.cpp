@@ -13,7 +13,6 @@
 #include "gxtest/util.h"
 
 static vu32* const _piReg = (u32*)0xCC003000;
-static vu16* const _peReg = (u16*)0xCC001000;
 #define PI_FIFO_RESET _piReg[6]
 
 #include <ogc/lwp_watchdog.h> // For diff_ticks and gettime
@@ -29,31 +28,14 @@ static void SleepTicks(u32 delay) {
   } while (diff_ticks(start, end) < (u64)delay);
 }
 
-extern void* gp_fifo;
-
 static void FifoReset()
 {
-  /*
-  u32 level;
-  _CPU_ISR_Disable(level);  // Not part of GX_AbortFrame
-  network_printf("Test 1\n");
   // Based on GX_AbortFrame, but we don't actually do anything with the GP fifo.
-  network_printf("Test 2\n");
   PI_FIFO_RESET = 1;
-  network_printf("Test 3\n");
   SleepTicks(50);
-  network_printf("Test 4\n");
   PI_FIFO_RESET = 0;
-  network_printf("Test 5\n");
   SleepTicks(5);
-  network_printf("Test 6\n");
-  _CPU_ISR_Restore(level);
-  */
-  u16 old_pe = _peReg[5];
-  GX_AbortFrame();
-  u16 new_pe = _peReg[5];
-  _peReg[5] = old_pe;
-  network_printf("%x -> %x -> %x\n", old_pe, new_pe, _peReg[5]);
+  //GX_AbortFrame();
 }
 
 static void SetClearRed(u8 r)
@@ -76,10 +58,7 @@ static u8 CheckClearRed()
   // Flushes pipeline as well as waiting
   CGX_WaitForGpuToFinish();
 
-  //return GXTest::ReadTestBuffer(0, 0, 200).r;
-  GXColor color;
-  GX_PeekARGB(0, 0, &color);
-  return color.r;
+  return GXTest::ReadTestBuffer(0, 0, 200).r;
 }
 
 void FifoTest()
