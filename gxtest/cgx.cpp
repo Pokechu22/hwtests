@@ -232,11 +232,8 @@ void CGX_ForcePipelineFlush()
   wgPipe->U32 = 0;
 }
 
-static u32 s_irq, s_reg;
 static void __CGXFinishInterruptHandler(u32 irq, void* ctx)
 {
-  s_irq = irq;
-  s_reg = _peReg[5];
   _peReg[5] = (_peReg[5] & ~0x08) | 0x08;
   _cgxfinished = 1;
 
@@ -258,5 +255,4 @@ void CGX_WaitForGpuToFinish()
     LWP_ThreadSleep(_cgxwaitfinish);
 
   _CPU_ISR_Restore(level);
-  network_printf("Interrupt %x %x\n", s_irq, s_reg);
 }
