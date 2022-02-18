@@ -30,18 +30,23 @@ static void SleepTicks(u32 delay) {
 
 static void FifoReset()
 {
+  network_printf("FifoReset()\n");
+#if 1
   // Based on GX_AbortFrame, but we don't actually do anything with the GP fifo.
-  /*
+  // This version hangs
   PI_FIFO_RESET = 1;
   SleepTicks(50);
   PI_FIFO_RESET = 0;
   SleepTicks(5);
-  */
+#else
+  // This call works, but other things break
   GX_AbortFrame();  // Note: This does more stuff (including sending some commands) on Wii
+#endif
 }
 
 static void SetClearRed(u8 r)
 {
+  network_printf("SetClearRed(%d)\n", r);
   // CGX_LOAD_BP_REG(BPMEM_CLEAR_AR << 24 | r);
   wgPipe->U8 = 0x61;
   wgPipe->U8 = BPMEM_CLEAR_AR;
@@ -60,7 +65,9 @@ static u8 CheckClearRed()
   // Flushes pipeline as well as waiting
   CGX_WaitForGpuToFinish();
 
-  return GXTest::ReadTestBuffer(0, 0, 200).r;
+  u8 result = GXTest::ReadTestBuffer(0, 0, 200).r;
+  network_printf("CheckClearRed() => %d\n", result);
+  return result;
 }
 
 void FifoTest()
@@ -93,7 +100,7 @@ void FifoTest()
   DO_TEST(result == 7, "4th clear should have red=7, not {}", result);
 
   FifoReset();
-  SetClearRed(8);  // 5 bytes
+  SetClearRed(8);  // 5 bytes, assuming FifoReset writes nothing (not true when using GX_AbortFrame)
   SetClearRed(9);  // 10 bytes
   SetClearRed(10);  // 15 bytes
   SetClearRed(11);  // 20 bytes
@@ -102,7 +109,7 @@ void FifoTest()
   SetClearRed(14);  // 35 bytes
   FifoReset();
   result = CheckClearRed();
-  DO_TEST(result == 13, "5th clear should have red=13, not {}", result);  // This might be timing dependent
+  DO_TEST(result == 13, "5th clear should have red=13, not {}", result);  // This might be timing dependent, and also fails when using GX_AbortFrame due to extra data
 
 /*
   GX_AbortFrame();  // Clears pipeline
