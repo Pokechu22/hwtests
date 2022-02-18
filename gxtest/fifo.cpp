@@ -31,11 +31,13 @@ static void SleepTicks(u32 delay) {
 static void FifoReset()
 {
   // Based on GX_AbortFrame, but we don't actually do anything with the GP fifo.
+  /*
   PI_FIFO_RESET = 1;
   SleepTicks(50);
   PI_FIFO_RESET = 0;
   SleepTicks(5);
-  //GX_AbortFrame();
+  */
+  GX_AbortFrame();  // Note: This does more stuff (including sending some commands) on Wii
 }
 
 static void SetClearRed(u8 r)
