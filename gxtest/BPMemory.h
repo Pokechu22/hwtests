@@ -886,6 +886,11 @@ union AlphaTest
   }
 };
 
+#define GAMMA_1_0 0
+#define GAMMA_1_7 1
+#define GAMMA_2_2 2
+#define GAMMA_INVALID_2_2 3  // Behaves the same as GAMMA2_2
+
 union UPE_Copy
 {
   u32 Hex;
