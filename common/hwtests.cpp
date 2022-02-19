@@ -17,7 +17,9 @@ struct TestStatus
 
 static TestStatus status(NULL, 0);
 static int number_of_tests = 0;
-static int number_of_passes = 0;
+static long long number_of_subtests;
+static int number_of_tests_passed = 0;
+static long long number_of_subtests_passed;
 
 int client_socket;
 int server_socket;
@@ -80,13 +82,15 @@ void privEndTest()
   if (0 == status.num_failures)
   {
     network_printf("Test %d passed (%lld subtests)\n", number_of_tests, status.num_subtests);
-    number_of_passes++;
+    number_of_tests_passed++;
   }
   else
   {
     network_printf("Test %d failed (%lld subtests, %lld failures)\n", number_of_tests,
                    status.num_subtests, status.num_failures);
   }
+  number_of_subtests += status.num_subtests;
+  number_of_subtests_passed += status.num_passes;
 }
 
 void privSimpleTest(bool condition, const char* file, int line, const char* fail_msg, ...)
@@ -96,7 +100,8 @@ void privSimpleTest(bool condition, const char* file, int line, const char* fail
 
 void report_test_results()
 {
-  network_printf("%d tests passed out of %d\n", number_of_passes, number_of_tests);
+  network_printf("%d tests passed out of %d; %lld subtests passed out of %lld\n",
+                 number_of_tests_passed, number_of_tests, number_of_subtests_passed, number_of_subtests);
 }
 
 #define SERVER_PORT 16784
