@@ -190,10 +190,11 @@ int main()
 
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
-          break;
+          goto done;
       }
     }
   }
+done:
 
   report_test_results();
   network_printf("Shutting down...\n");
