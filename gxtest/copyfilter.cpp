@@ -75,33 +75,38 @@ void SetCopyFilter(u8 copy_filter_sum)
   CGX_LOAD_BP_REG(BPMEM_COPYFILTER1 << 24 | copy_filter_reg_1);
 }
 
-std::pair<u8, float> Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
+u8 Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
 {
-  float new_value = value;
   // Apply copy filter
-  new_value *= copy_filter_sum;
-  new_value /= 64;
-  new_value = std::floor(new_value);
-  // Convert from [0, 255] (assuming sane copy filter) to [0, 1]
-  new_value /= 255;
+  u32 prediction_i = static_cast<u32>(value) * static_cast<u32>(copy_filter_sum);
+  prediction_i >>= 6;  // Divide by 64
+  // The clamping seems to happen in the range[0, 511]; if the value is outside
+  // an overflow will still occur.  This happens if copy_filter_sum >= 128.
+  prediction_i &= 0x1ffu;
+  prediction_i = std::min(prediction_i, 0xffu);
   // Apply gamma
-  switch (gamma)
+  if (gamma != Gamma::Gamma1_0)
   {
-  case Gamma::Gamma1_0:
-    // new_value = std::pow(new_value, 1.0f);
-    break;
-  case Gamma::Gamma1_7:
-    new_value = std::pow(new_value, 1 / 1.7f);
-    break;
-  case Gamma::Gamma2_2:
-  case Gamma::Invalid2_2:
-  default:
-    new_value = std::pow(new_value, 1 / 2.2f);
-    break;
+    // Convert from [0-255] to [0-1]
+    float prediction_f = static_cast<float>(prediction_i) / 255.f;
+    switch (gamma)
+    {
+    case Gamma::Gamma1_7:
+      prediction_f = std::pow(prediction_f, 1 / 1.7f);
+      break;
+    case Gamma::Gamma2_2:
+    case Gamma::Invalid2_2:
+    default:
+      prediction_f = std::pow(prediction_f, 1 / 2.2f);
+      break;
+    }
+    // Due to how exponentials work, std::pow will always map from [0, 1] to [0, 1],
+    // so no overflow can occur here.  (pow is continuous, 0^x is 0 for x > 0,
+    // and 1^x is 1, so y in [0, 1] has y^x in [0, 1])
+    // Convert back from [0, 1] to [0, 255]
+    prediction_i = static_cast<u32>(std::round(prediction_f * 255.f));
   }
-  // Convert back from [0, 1] to [0, 255]
-  new_value *= 255;
-  return std::make_pair(static_cast<u8>(std::round(std::min(new_value, 255.f))), new_value);
+  return static_cast<u8>(prediction_i);
 }
 
 u8 GetActualValue(Gamma gamma)
@@ -120,9 +125,9 @@ void CopyFilterTest(u8 value)
     SetCopyFilter(copy_filter_sum);
     for (Gamma gamma : GAMMA_VALUES)
     {
-      auto expected = Predict(value, copy_filter_sum, gamma);
+      u8 expected = Predict(value, copy_filter_sum, gamma);
       u8 actual = GetActualValue(gamma);
-      DO_TEST(actual == expected.first, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d (%f), was %d", value, copy_filter_sum, static_cast<u8>(gamma), expected.first, expected.second, actual);
+      DO_TEST(actual == expected, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d, was %d", value, copy_filter_sum, static_cast<u8>(gamma), expected, actual);
     }
   }
 
