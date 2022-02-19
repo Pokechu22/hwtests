@@ -16,8 +16,8 @@
 #define FULL_COPY_FILTER_COEFS true
 // Use all gamma values, instead of just 1.0 (0)
 #define FULL_GAMMA true
-// Use all pixel formats, instead of just PIXELFMT_RGB8_Z24
-#define FULL_PIXEL_FORMATS true
+// Use all pixel formats, instead of just the ones that work
+#define FULL_PIXEL_FORMATS false
 
 static void FillEFB(u32 pixel_fmt)
 {
@@ -27,12 +27,17 @@ static void FillEFB(u32 pixel_fmt)
   ctrl.zformat = ZC_LINEAR;
   ctrl.early_ztest = 0;
   CGX_LOAD_BP_REG(ctrl.hex);
+  CGX_WaitForGpuToFinish();
 
   GX_PokeDither(false);
   GX_PokeAlphaUpdate(true);
   GX_PokeColorUpdate(true);
   GX_PokeBlendMode(GX_BM_NONE, GX_BL_ZERO, GX_BL_ZERO, GX_LO_SET);
   GX_PokeZMode(false, GX_ALWAYS, true);
+
+  // For some reason GX_PokeARGB hangs when using this format
+  if (pixel_fmt == PIXELFMT_RGB565_Z16)
+    return;
 
   for (u16 x = 0; x < 256; x++)
   {
@@ -57,10 +62,11 @@ static const std::array<u32, 1> GAMMA_VALUES = { GAMMA_1_0 };
 #endif
 
 #if FULL_PIXEL_FORMATS
-static const std::array<u32, 3> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16 };
-// static const std::array<u32, 8> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16, PIXELFMT_Z24, PIXELFMT_Y8, PIXELFMT_U8, PIXELFMT_V8, PIXELFMT_YUV420 };
+// static const std::array<u32, 3> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16 };
+static const std::array<u32, 8> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16, PIXELFMT_Z24, PIXELFMT_Y8, PIXELFMT_U8, PIXELFMT_V8, PIXELFMT_YUV420 };
 #else
-static const std::array<u32, 1> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24 };
+// These formats work, though I don't know why Y8 and YUV420 do
+static const std::array<u32, 4> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_Y8, PIXELFMT_YUV420 };
 #endif
 
 #if FULL_COPY_FILTER_COEFS
@@ -92,18 +98,28 @@ void SetCopyFilter(u8 copy_filter_sum)
 
 GXTest::Vec4<u8> GetEfbColor(u8 x, u32 pixel_fmt)
 {
-  const u8 sixbit = static_cast<u8>(((x & 0xfc) * 255) / 0xfc);
-  const u8 fivebit = static_cast<u8>(((x & 0xf8) * 255) / 0xf8);
+  // const u8 sixbit = static_cast<u8>(((x & 0xfc) * 255) / 0xfc);
+  // const u8 fivebit = static_cast<u8>(((x & 0xf8) * 255) / 0xf8);
+  const u8 sixbit = static_cast<u8>((x & 0xfc) | ((x & 0xc0) >> 6));
+  const u8 fivebit = static_cast<u8>((x & 0xf8) | ((x & 0xe0) >> 5));
   switch (pixel_fmt)
   {
   case PIXELFMT_RGB8_Z24:
+  case PIXELFMT_Y8:
+  case PIXELFMT_YUV420:
   default:
     return {x, x, x, 255};
   case PIXELFMT_RGBA6_Z24:
     return {sixbit, sixbit, sixbit, sixbit};
   case PIXELFMT_RGB565_Z16:
+    // Does not work
     return {fivebit, sixbit, fivebit, 255};
+  case PIXELFMT_U8:
+  case PIXELFMT_V8:
+    // Does not work
+    return {fivebit, fivebit, fivebit, 255};
   case PIXELFMT_Z24:
+    // Does not work
     return {x, 0, 0, 255};
   }
 }
