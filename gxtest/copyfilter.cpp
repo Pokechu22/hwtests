@@ -154,6 +154,7 @@ int main()
     }
   }
 
+  report_test_results();
   network_printf("Shutting down...\n");
   network_shutdown();
 
