@@ -17,19 +17,33 @@
 // Use all gamma values, instead of just 1.0 (0)
 #define FULL_GAMMA true
 
-static void FillEFB(u8 a, u8 r, u8 g, u8 b)
+static void FillEFB(u32 pixel_format)
 {
   PE_CONTROL ctrl;
   ctrl.hex = BPMEM_ZCOMPARE << 24;
-  ctrl.pixel_format = PIXELFMT_RGB8_Z24;
+  ctrl.pixel_format = pixel_format;
   ctrl.zformat = ZC_LINEAR;
   ctrl.early_ztest = 0;
   CGX_LOAD_BP_REG(ctrl.hex);
 
-  CGX_LOAD_BP_REG(BPMEM_CLEAR_AR << 24 | u32(a) << 8 | u32(r));
-  CGX_LOAD_BP_REG(BPMEM_CLEAR_GB << 24 | u32(g) << 8 | u32(b));
+  GX_PokeDither(false);
+  GX_PokeAlphaUpdate(true);
+  GX_PokeColorUpdate(true);
+  GX_PokeBlendMode(GX_BM_NONE, GX_BL_ZERO, GX_BL_ZERO, GX_LO_SET);
 
-  GXTest::CopyToTestBuffer(0, 0, 199, 49, true);
+  for (u16 x = 0; x < 256; x++)
+  {
+    for (u16 y = 0; y < 3; y++)
+    {
+      // Fill the EFB with a gradient where r = x
+      GXColor color;
+      color.r = static_cast<u8>(x);
+      color.g = 0;
+      color.b = 0;
+      color.a = static_cast<u8>(x);
+      GX_PokeARGB(x, y, color);
+    }
+  }
 }
 
 #if FULL_GAMMA
@@ -99,26 +113,19 @@ u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
   return static_cast<u8>(prediction_i);
 }
 
-u8 GetActualValue(u32 gamma)
-{
-  GXTest::CopyToTestBuffer(0, 0, 199, 49, false, gamma);
-  CGX_WaitForGpuToFinish();
-  return GXTest::ReadTestBuffer(4, 4, 200).r;
-}
-
-void CopyFilterTest(u8 value)
+void CopyFilterTest(u8 copy_filter_sum, u32 gamma)
 {
   START_TEST();
 
-  for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
+  GXTest::CopyToTestBuffer(0, 0, 255, 2, false, gamma);
+  CGX_WaitForGpuToFinish();
+
+  for (u32 x = 0; x < 256; x++)
   {
-    SetCopyFilter(copy_filter_sum);
-    for (u32 gamma : GAMMA_VALUES)
-    {
-      u8 expected = Predict(value, copy_filter_sum, gamma);
-      u8 actual = GetActualValue(gamma);
-      DO_TEST(actual == expected, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d, was %d", value, copy_filter_sum, gamma, expected, actual);
-    }
+    u8 value = static_cast<u8>(x);
+    u8 expected = Predict(value, copy_filter_sum, gamma);
+    u8 actual = GXTest::ReadTestBuffer(x, 1, 256).r;
+    DO_TEST(actual == expected, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d, was %d", value, copy_filter_sum, gamma, expected, actual);
   }
 
   END_TEST();
@@ -133,14 +140,18 @@ int main()
   network_printf("FULL_COPY_FILTER_COEFS: %s\n", FULL_COPY_FILTER_COEFS ? "true" : "false");
   network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
 
-  for (u32 i = 0; i < 256; i++)
+  FillEFB(PIXELFMT_RGB8_Z24);
+  for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
   {
-    FillEFB(0, i, 0, 0);
-    CopyFilterTest(static_cast<u8>(i));
+    SetCopyFilter(copy_filter_sum);
+    for (u32 gamma : GAMMA_VALUES)
+    {
+      CopyFilterTest(copy_filter_sum, gamma);
 
-    WPAD_ScanPads();
-    if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
-      break;
+      WPAD_ScanPads();
+      if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
+        break;
+    }
   }
 
   network_printf("Shutting down...\n");
