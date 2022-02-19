@@ -32,19 +32,10 @@ static void FillEFB(u8 a, u8 r, u8 g, u8 b)
   GXTest::CopyToTestBuffer(0, 0, 199, 49, true);
 }
 
-enum class Gamma : u8
-{
-  Gamma1_0 = 0,
-  Gamma1_7 = 1,
-  Gamma2_2 = 2,
-  Invalid2_2 = 3,  // Behaves the same as Gamma2_2?
-};
-
 #if FULL_GAMMA
-static const std::array<Gamma, 4> GAMMA_VALUES = { Gamma::Gamma1_0, Gamma::Gamma1_7, Gamma::Gamma2_2, Gamma::Invalid2_2 };
+static const std::array<u32, 4> GAMMA_VALUES = { GAMMA_1_0, GAMMA_1_7, GAMMA_2_2, GAMMA_INVALID_2_2 };
 #else
-// For now Dolphin doesn't implement gamma for EFB copies
-static const std::array<Gamma, 1> GAMMA_VALUES = { Gamma::Gamma1_0 };
+static const std::array<u32, 1> GAMMA_VALUES = { GAMMA_1_0 };
 #endif
 
 #if FULL_COPY_FILTER_COEFS
@@ -56,8 +47,7 @@ void SetCopyFilter(u8 copy_filter_sum)
 {
   // Each field in the copy filter ranges from 0-63, and the middle 3 values
   // all apply to the current row of pixels.  This means that up to 63*3
-  // can be used for the current row.  Dolphin currently assumes as well that
-  // the sum of all values must not go over 64.
+  // can be used for the current row.
   // We currently ignore the case of copy_filter_sum >= MAX_COPY_FILTER.
 
   u8 w4 = std::min<u8>(copy_filter_sum, 63);
@@ -75,7 +65,7 @@ void SetCopyFilter(u8 copy_filter_sum)
   CGX_LOAD_BP_REG(BPMEM_COPYFILTER1 << 24 | copy_filter_reg_1);
 }
 
-u8 Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
+u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
 {
   // Apply copy filter
   u32 prediction_i = static_cast<u32>(value) * static_cast<u32>(copy_filter_sum);
@@ -85,17 +75,17 @@ u8 Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
   prediction_i &= 0x1ffu;
   prediction_i = std::min(prediction_i, 0xffu);
   // Apply gamma
-  if (gamma != Gamma::Gamma1_0)
+  if (gamma != GAMMA_1_0)
   {
     // Convert from [0-255] to [0-1]
     float prediction_f = static_cast<float>(prediction_i) / 255.f;
     switch (gamma)
     {
-    case Gamma::Gamma1_7:
+    case GAMMA_1_7:
       prediction_f = std::pow(prediction_f, 1 / 1.7f);
       break;
-    case Gamma::Gamma2_2:
-    case Gamma::Invalid2_2:
+    case GAMMA_2_2:
+    case GAMMA_INVALID_2_2:
     default:
       prediction_f = std::pow(prediction_f, 1 / 2.2f);
       break;
@@ -109,9 +99,9 @@ u8 Predict(u8 value, u8 copy_filter_sum, Gamma gamma)
   return static_cast<u8>(prediction_i);
 }
 
-u8 GetActualValue(Gamma gamma)
+u8 GetActualValue(u32 gamma)
 {
-  GXTest::CopyToTestBuffer(0, 0, 199, 49, false, static_cast<u8>(gamma));
+  GXTest::CopyToTestBuffer(0, 0, 199, 49, false, gamma);
   CGX_WaitForGpuToFinish();
   return GXTest::ReadTestBuffer(4, 4, 200).r;
 }
@@ -123,11 +113,11 @@ void CopyFilterTest(u8 value)
   for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
   {
     SetCopyFilter(copy_filter_sum);
-    for (Gamma gamma : GAMMA_VALUES)
+    for (u32 gamma : GAMMA_VALUES)
     {
       u8 expected = Predict(value, copy_filter_sum, gamma);
       u8 actual = GetActualValue(gamma);
-      DO_TEST(actual == expected, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d, was %d", value, copy_filter_sum, static_cast<u8>(gamma), expected, actual);
+      DO_TEST(actual == expected, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d, was %d", value, copy_filter_sum, gamma, expected, actual);
     }
   }
 
