@@ -182,6 +182,7 @@ void CGX_DoEfbCopyTex(u16 left, u16 top, u16 width, u16 height, u8 dest_format,
   reg.intensity_fmt = copy_to_intensity;
   reg.clamp0 = 1;
   reg.clamp1 = 1;
+  reg.auto_conv = copy_to_intensity;
   CGX_LOAD_BP_REG(reg.Hex);
 
   DCFlushRange(dest, GX_GetTexBufferSize(width, height, GX_TF_RGBA8, GX_FALSE, 1));

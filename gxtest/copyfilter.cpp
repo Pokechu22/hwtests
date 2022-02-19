@@ -158,11 +158,31 @@ u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
   return static_cast<u8>(prediction_i);
 }
 
-void CopyFilterTest(u32 pixel_fmt, u8 copy_filter_sum, u32 gamma)
+GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, u8 copy_filter_sum, u32 gamma, bool intensity)
+{
+  const u8 r = Predict(efb_color.r, copy_filter_sum, gamma);
+  const u8 g = Predict(efb_color.g, copy_filter_sum, gamma);
+  const u8 b = Predict(efb_color.b, copy_filter_sum, gamma);
+  const u8 a = efb_color.a;  // Copy filter doesn't apply to alpha
+  if (intensity)
+  {
+    // BT.601 conversion
+    const u8 y = static_cast<u8>(std::round( 0.257f * r +  0.504f * g +  0.098f * b + 16));
+    const u8 u = static_cast<u8>(std::round(-0.148f * r + -0.291f * g +  0.439f * b + 128));
+    const u8 v = static_cast<u8>(std::round( 0.439f * r + -0.368f * g + -0.071f * b + 128));
+    return { y, u, v, a };
+  }
+  else
+  {
+    return { r, g, b, a };
+  }
+}
+
+void CopyFilterTest(u32 pixel_fmt, u8 copy_filter_sum, u32 gamma, bool intensity)
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 2, false, gamma);
+  GXTest::CopyToTestBuffer(0, 0, 255, 2, false, gamma, intensity);
   CGX_WaitForGpuToFinish();
 
   for (u32 x = 0; x < 256; x++)
@@ -170,15 +190,12 @@ void CopyFilterTest(u32 pixel_fmt, u8 copy_filter_sum, u32 gamma)
     // Reduce bit depth based on the format
     GXTest::Vec4<u8> efb_color = GetEfbColor(static_cast<u8>(x), pixel_fmt);
     // Make predictions based on the copy filter and gamma
-    u8 expected_r = Predict(efb_color.r, copy_filter_sum, gamma);
-    u8 expected_g = Predict(efb_color.g, copy_filter_sum, gamma);
-    u8 expected_b = Predict(efb_color.b, copy_filter_sum, gamma);
-    u8 expected_a = efb_color.a;  // Copy filter doesn't apply to alpha
+    GXTest::Vec4<u8> expected = Predict(efb_color, copy_filter_sum, gamma, intensity);
     GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
-    DO_TEST(actual.r == expected_r, "Predicted wrong red   value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_r, efb_color.r, actual.r);
-    DO_TEST(actual.g == expected_g, "Predicted wrong green value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_g, efb_color.g, actual.g);
-    DO_TEST(actual.b == expected_b, "Predicted wrong blue  value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_b, efb_color.b, actual.b);
-    DO_TEST(actual.a == expected_a, "Predicted wrong alpha value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_a, efb_color.a, actual.a);
+    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.r, efb_color.r, actual.r);
+    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.g, efb_color.g, actual.g);
+    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.b, efb_color.b, actual.b);
+    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.a, efb_color.a, actual.a);
   }
 
   END_TEST();
@@ -197,12 +214,14 @@ int main()
   for (u32 pixel_fmt : PIXEL_FORMATS)
   {
     FillEFB(pixel_fmt);
-    for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
+    u8 copy_filter_sum = 64;
+    // for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
     {
       SetCopyFilter(copy_filter_sum);
       for (u32 gamma : GAMMA_VALUES)
       {
-        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma);
+        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, false);
+        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, true);
 
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
