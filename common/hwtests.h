@@ -27,6 +27,8 @@ void privEndTest();
 // TODO: Not implemented, yet
 // void privSimpleTest(bool condition, const char* file, int line, const char* fail_msg, ...);
 
+void report_test_results();
+
 void network_init();
 void network_shutdown();
 void network_vprintf(const char* str, va_list args);
