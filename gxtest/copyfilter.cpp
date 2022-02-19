@@ -16,12 +16,14 @@
 #define FULL_COPY_FILTER_COEFS true
 // Use all gamma values, instead of just 1.0 (0)
 #define FULL_GAMMA true
+// Use all pixel formats, instead of just PIXELFMT_RGB8_Z24
+#define FULL_PIXEL_FORMATS true
 
-static void FillEFB(u32 pixel_format)
+static void FillEFB(u32 pixel_fmt)
 {
   PE_CONTROL ctrl;
   ctrl.hex = BPMEM_ZCOMPARE << 24;
-  ctrl.pixel_format = pixel_format;
+  ctrl.pixel_format = pixel_fmt;
   ctrl.zformat = ZC_LINEAR;
   ctrl.early_ztest = 0;
   CGX_LOAD_BP_REG(ctrl.hex);
@@ -30,18 +32,20 @@ static void FillEFB(u32 pixel_format)
   GX_PokeAlphaUpdate(true);
   GX_PokeColorUpdate(true);
   GX_PokeBlendMode(GX_BM_NONE, GX_BL_ZERO, GX_BL_ZERO, GX_LO_SET);
+  GX_PokeZMode(false, GX_ALWAYS, true);
 
   for (u16 x = 0; x < 256; x++)
   {
     for (u16 y = 0; y < 3; y++)
     {
-      // Fill the EFB with a gradient where r = x
+      // Fill the EFB with a gradient where all components = x
       GXColor color;
       color.r = static_cast<u8>(x);
-      color.g = 0;
-      color.b = 0;
+      color.g = static_cast<u8>(x);
+      color.b = static_cast<u8>(x);
       color.a = static_cast<u8>(x);
       GX_PokeARGB(x, y, color);
+      GX_PokeZ(x, y, x);
     }
   }
 }
@@ -50,6 +54,13 @@ static void FillEFB(u32 pixel_format)
 static const std::array<u32, 4> GAMMA_VALUES = { GAMMA_1_0, GAMMA_1_7, GAMMA_2_2, GAMMA_INVALID_2_2 };
 #else
 static const std::array<u32, 1> GAMMA_VALUES = { GAMMA_1_0 };
+#endif
+
+#if FULL_PIXEL_FORMATS
+static const std::array<u32, 3> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16 };
+// static const std::array<u32, 8> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16, PIXELFMT_Z24, PIXELFMT_Y8, PIXELFMT_U8, PIXELFMT_V8, PIXELFMT_YUV420 };
+#else
+static const std::array<u32, 1> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24 };
 #endif
 
 #if FULL_COPY_FILTER_COEFS
@@ -77,6 +88,24 @@ void SetCopyFilter(u8 copy_filter_sum)
 
   CGX_LOAD_BP_REG(BPMEM_COPYFILTER0 << 24 | copy_filter_reg_0);
   CGX_LOAD_BP_REG(BPMEM_COPYFILTER1 << 24 | copy_filter_reg_1);
+}
+
+GXTest::Vec4<u8> GetEfbColor(u8 x, u32 pixel_fmt)
+{
+  const u8 sixbit = static_cast<u8>(((x & 0xfc) * 255) / 0xfc);
+  const u8 fivebit = static_cast<u8>(((x & 0xf8) * 255) / 0xf8);
+  switch (pixel_fmt)
+  {
+  case PIXELFMT_RGB8_Z24:
+  default:
+    return {x, x, x, 255};
+  case PIXELFMT_RGBA6_Z24:
+    return {sixbit, sixbit, sixbit, sixbit};
+  case PIXELFMT_RGB565_Z16:
+    return {fivebit, sixbit, fivebit, 255};
+  case PIXELFMT_Z24:
+    return {x, 0, 0, 255};
+  }
 }
 
 u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
@@ -113,7 +142,7 @@ u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
   return static_cast<u8>(prediction_i);
 }
 
-void CopyFilterTest(u8 copy_filter_sum, u32 gamma)
+void CopyFilterTest(u32 pixel_fmt, u8 copy_filter_sum, u32 gamma)
 {
   START_TEST();
 
@@ -122,10 +151,18 @@ void CopyFilterTest(u8 copy_filter_sum, u32 gamma)
 
   for (u32 x = 0; x < 256; x++)
   {
-    u8 value = static_cast<u8>(x);
-    u8 expected = Predict(value, copy_filter_sum, gamma);
-    u8 actual = GXTest::ReadTestBuffer(x, 1, 256).r;
-    DO_TEST(actual == expected, "Predicted wrong value for color %d copy filter %d gamma %d: expected %d, was %d", value, copy_filter_sum, gamma, expected, actual);
+    // Reduce bit depth based on the format
+    GXTest::Vec4<u8> efb_color = GetEfbColor(static_cast<u8>(x), pixel_fmt);
+    // Make predictions based on the copy filter and gamma
+    u8 expected_r = Predict(efb_color.r, copy_filter_sum, gamma);
+    u8 expected_g = Predict(efb_color.g, copy_filter_sum, gamma);
+    u8 expected_b = Predict(efb_color.b, copy_filter_sum, gamma);
+    u8 expected_a = efb_color.a;  // Copy filter doesn't apply to alpha
+    GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
+    DO_TEST(actual.r == expected_r, "Predicted wrong red   value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_r, efb_color.r, actual.r);
+    DO_TEST(actual.g == expected_g, "Predicted wrong green value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_g, efb_color.g, actual.g);
+    DO_TEST(actual.b == expected_b, "Predicted wrong blue  value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_b, efb_color.b, actual.b);
+    DO_TEST(actual.a == expected_a, "Predicted wrong alpha value for x %d pixel format %d copy filter %d gamma %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, expected_a, efb_color.a, actual.a);
   }
 
   END_TEST();
@@ -139,18 +176,22 @@ int main()
   GXTest::Init();
   network_printf("FULL_COPY_FILTER_COEFS: %s\n", FULL_COPY_FILTER_COEFS ? "true" : "false");
   network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
+  network_printf("FULL_PIXEL_FORMATS: %s\n", FULL_PIXEL_FORMATS ? "true" : "false");
 
-  FillEFB(PIXELFMT_RGB8_Z24);
-  for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
+  for (u32 pixel_fmt : PIXEL_FORMATS)
   {
-    SetCopyFilter(copy_filter_sum);
-    for (u32 gamma : GAMMA_VALUES)
+    FillEFB(pixel_fmt);
+    for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
     {
-      CopyFilterTest(copy_filter_sum, gamma);
+      SetCopyFilter(copy_filter_sum);
+      for (u32 gamma : GAMMA_VALUES)
+      {
+        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma);
 
-      WPAD_ScanPads();
-      if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
-        break;
+        WPAD_ScanPads();
+        if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
+          break;
+      }
     }
   }
 
