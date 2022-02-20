@@ -54,12 +54,13 @@ GXTest::Vec4<u8> GetIntensityColor(u8 r, u8 g, u8 b, u8 a)
 
 void IntensityTest(u8 blue)
 {
-  START_TEST();
+  //START_TEST();
 
   GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, false);
   CGX_WaitForGpuToFinish();
   // First do a sanity-check to make sure that the EFB contains the expected RGB values
 
+  /*
   for (u32 x = 0; x < 256; x++)
   {
     for (u32 y = 0; y < 256; y++)
@@ -72,6 +73,7 @@ void IntensityTest(u8 blue)
       DO_TEST(actual.a == expected.a, "EFB has wrong alpha value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.a, actual.a);
     }
   }
+  */
 
   // Now do an intensity-format copy
   GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
@@ -82,15 +84,18 @@ void IntensityTest(u8 blue)
     for (u32 y = 0; y < 256; y++)
     {
       GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, y, 256);
+      /*
       GXTest::Vec4<u8> expected = GetIntensityColor(x, y, blue, 255);
       DO_TEST(actual.r == expected.r, "Got wrong y value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.r, actual.r);
       DO_TEST(actual.g == expected.g, "Got wrong u value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.g, actual.g);
       DO_TEST(actual.b == expected.b, "Got wrong v value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.b, actual.b);
       DO_TEST(actual.a == expected.a, "Got wrong a value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.a, actual.a);
+      */
+      network_printf("%d,%d,%d,%d,%d,%d\n", x, y, blue, actual.r, actual.g, actual.b);
     }
   }
 
-  END_TEST();
+  //END_TEST();
 }
 
 int main()
