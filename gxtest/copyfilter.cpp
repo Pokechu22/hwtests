@@ -66,7 +66,8 @@ static const std::array<u32, 1> GAMMA_VALUES = { GAMMA_1_0 };
 static const std::array<u32, 8> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16, PIXELFMT_Z24, PIXELFMT_Y8, PIXELFMT_U8, PIXELFMT_V8, PIXELFMT_YUV420 };
 #else
 // These formats work, though I don't know why Y8 and YUV420 do
-static const std::array<u32, 4> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_Y8, PIXELFMT_YUV420 };
+// static const std::array<u32, 4> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_Y8, PIXELFMT_YUV420 };
+static const std::array<u32, 2> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24 };
 #endif
 
 #if FULL_COPY_FILTER_COEFS
@@ -214,8 +215,7 @@ int main()
   for (u32 pixel_fmt : PIXEL_FORMATS)
   {
     FillEFB(pixel_fmt);
-    u8 copy_filter_sum = 64;
-    // for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
+    for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
     {
       SetCopyFilter(copy_filter_sum);
       for (u32 gamma : GAMMA_VALUES)
