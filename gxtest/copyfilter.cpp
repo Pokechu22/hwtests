@@ -167,9 +167,9 @@ GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, u8 copy_filter_sum, u32 gam
   if (intensity)
   {
     // BT.601 conversion
-    const u8 y = static_cast<u8>(std::round( 0.257f * r +  0.504f * g +  0.098f * b + 16));
-    const u8 u = static_cast<u8>(std::round(-0.148f * r + -0.291f * g +  0.439f * b + 128));
-    const u8 v = static_cast<u8>(std::round( 0.439f * r + -0.368f * g + -0.071f * b + 128));
+    const u8 y = static_cast<u8>(std::round( 0.2578125f * r + 0.50390625f * g + 0.09765625f * b + 16));
+    const u8 u = static_cast<u8>(std::round(-0.1484375f * r + -0.2890625f * g +  0.4375f * b + 128));
+    const u8 v = static_cast<u8>(std::round( 0.4375f * r + -0.3671875f * g + -0.0703125f * b + 128));
     return { y, u, v, a };
   }
   else
