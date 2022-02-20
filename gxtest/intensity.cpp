@@ -92,6 +92,73 @@ void IntensityTest(u8 blue)
   END_TEST();
 }
 
+void DumpColor(u8 r, u8 g, u8 b)
+{
+  GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(r, g, 256);
+  GXTest::Vec4<u8> expected = GetIntensityColor(r, g, b, 255);
+  bool match = expected.r == actual.r && expected.g == actual.g && expected.b == actual.b && expected.a == actual.a;
+  // network_printf("%02x%02x%02x: expected %02x%02x%02x%02x, got %02x%02x%02x%02x (match: %s)\n", r, g, b, expected.r, expected.g, expected.b, expected.a, actual.r, actual.g, actual.b, actual.a, match ? "true" : "false");
+  network_printf("%d,%d,%d,%d,%d,%d\n", r, g, b, actual.r, actual.g, actual.b);
+}
+
+void DumpIntensityInfo()
+{
+  FillEFB(0);
+  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
+  CGX_WaitForGpuToFinish();
+
+  for (u32 r = 0; r <= 255; r++)
+    DumpColor(r, 0, 0);
+  for (u32 r = 0; r <= 255; r++)
+    DumpColor(r, 255, 0);
+  for (u32 g = 0; g <= 255; g++)
+    DumpColor(0, g, 0);
+  for (u32 g = 0; g <= 255; g++)
+    DumpColor(255, g, 0);
+
+  FillEFB(255);
+  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
+  CGX_WaitForGpuToFinish();
+
+  for (u32 r = 0; r <= 255; r++)
+    DumpColor(r, 0, 255);
+  for (u32 r = 0; r <= 255; r++)
+    DumpColor(r, 255, 255);
+  for (u32 g = 0; g <= 255; g++)
+    DumpColor(0, g, 255);
+  for (u32 g = 0; g <= 255; g++)
+    DumpColor(255, g, 255);
+
+  for (u32 b = 0; b <= 255; b++)
+  {
+    FillEFB(b);
+    GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
+    CGX_WaitForGpuToFinish();
+    DumpColor(0, 0, b);
+  }
+  for (u32 b = 0; b <= 255; b++)
+  {
+    FillEFB(b);
+    GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
+    CGX_WaitForGpuToFinish();
+    DumpColor(255, 0, b);
+  }
+  for (u32 b = 0; b <= 255; b++)
+  {
+    FillEFB(b);
+    GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
+    CGX_WaitForGpuToFinish();
+    DumpColor(0, 255, b);
+  }
+  for (u32 b = 0; b <= 255; b++)
+  {
+    FillEFB(b);
+    GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
+    CGX_WaitForGpuToFinish();
+    DumpColor(255, 255, b);
+  }
+}
+
 int main()
 {
   network_init();
@@ -99,6 +166,7 @@ int main()
 
   GXTest::Init();
 
+  /*
   for (u32 blue = 0; blue < 256; blue++)
   {
     FillEFB(blue);
@@ -108,6 +176,8 @@ int main()
     if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
       break;
   }
+  */
+  DumpIntensityInfo();
 
   report_test_results();
   network_printf("Shutting down...\n");
