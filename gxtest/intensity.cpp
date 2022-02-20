@@ -45,10 +45,9 @@ static void FillEFB(u8 blue)
 GXTest::Vec4<u8> GetIntensityColor(u8 r, u8 g, u8 b, u8 a)
 {
   // BT.601 conversion
-  // Yes, this test fails if the precision on these is lower
-  const u8 y = static_cast<u8>(std::round( 0.2578125f * r + 0.50390625f * g + 0.09765625f * b + 16));
-  const u8 u = static_cast<u8>(std::round(-0.1484375f * r + -0.2890625f * g +  0.4375f * b + 128));
-  const u8 v = static_cast<u8>(std::round( 0.4375f * r + -0.3671875f * g + -0.0703125f * b + 128));
+  const u8 y = static_cast<u8>(std::round(( 66 * r + 129 * g +  25 * b) / 256.0 + 16));
+  const u8 u = static_cast<u8>(std::round((-38 * r + -74 * g + 112 * b) / 256.0 + 128));
+  const u8 v = static_cast<u8>(std::round((112 * r + -94 * g + -18 * b) / 256.0 + 128));
   return { y, u, v, a };
 }
 
