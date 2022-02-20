@@ -67,7 +67,7 @@ static const std::array<u32, 8> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RG
 #else
 // These formats work, though I don't know why Y8 and YUV420 do
 // static const std::array<u32, 4> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_Y8, PIXELFMT_YUV420 };
-static const std::array<u32, 2> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24 };
+static const std::array<u32, 1> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24 };
 #endif
 
 #if FULL_COPY_FILTER_COEFS
