@@ -76,6 +76,7 @@ void LightingTest()
     CGX_SetViewport(0.0f, 0.0f, 201.0f, 50.0f, 0.0f, 1.0f);
     auto cc = CGXDefault<TevStageCombiner::ColorCombiner>(0);
     cc.d = TEVCOLORARG_RASC;
+    cc.c = cc.d;
     CGX_LOAD_BP_REG(cc.hex);
     GXTest::Quad().ColorRGBA(0, 0, 0, 0xff).Draw();
 
