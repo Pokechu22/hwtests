@@ -51,29 +51,11 @@ GXTest::Vec4<u8> GetIntensityColor(u8 r, u8 g, u8 b, u8 a)
   return { y, u, v, a };
 }
 
-void IntensityTest(u8 blue)
+void IntensityTest(u8 blue, bool yuv, bool intensity_fmt, bool auto_conv)
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 255);
-  CGX_WaitForGpuToFinish();
-  // First do a sanity-check to make sure that the EFB contains the expected RGB values
-
-  for (u32 x = 0; x < 256; x++)
-  {
-    for (u32 y = 0; y < 256; y++)
-    {
-      GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, y, 256);
-      GXTest::Vec4<u8> expected = { static_cast<u8>(x), static_cast<u8>(y), blue, 255 };
-      DO_TEST(actual.r == expected.r, "EFB has wrong red   value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.r, actual.r);
-      DO_TEST(actual.g == expected.g, "EFB has wrong green value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.g, actual.g);
-      DO_TEST(actual.b == expected.b, "EFB has wrong blue  value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.b, actual.b);
-      DO_TEST(actual.a == expected.a, "EFB has wrong alpha value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.a, actual.a);
-    }
-  }
-
-  // Now do an intensity-format copy
-  GXTest::CopyToTestBuffer(0, 0, 255, 255, {.intensity_fmt = true, .auto_conv = true});
+  GXTest::CopyToTestBuffer(0, 0, 255, 255, {.yuv = yuv, .intensity_fmt = intensity_fmt, .auto_conv = auto_conv});
   CGX_WaitForGpuToFinish();
 
   for (u32 x = 0; x < 256; x++)
@@ -81,11 +63,12 @@ void IntensityTest(u8 blue)
     for (u32 y = 0; y < 256; y++)
     {
       GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, y, 256);
-      GXTest::Vec4<u8> expected = GetIntensityColor(x, y, blue, 255);
-      DO_TEST(actual.r == expected.r, "Got wrong y value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.r, actual.r);
-      DO_TEST(actual.g == expected.g, "Got wrong u value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.g, actual.g);
-      DO_TEST(actual.b == expected.b, "Got wrong v value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.b, actual.b);
-      DO_TEST(actual.a == expected.a, "Got wrong a value for x %d y %d blue %d: expected %d, was %d", x, y, blue, expected.a, actual.a);
+      bool actually_is_intensity = intensity_fmt && auto_conv;
+      GXTest::Vec4<u8> expected = actually_is_intensity ? GetIntensityColor(x, y, blue, 255) : GXTest::Vec4<u8>{static_cast<u8>(x), static_cast<u8>(y), blue, 255};
+      DO_TEST(actual.r == expected.r, "Got wrong red   / y value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.r, actual.r);
+      DO_TEST(actual.g == expected.g, "Got wrong green / u value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.g, actual.g);
+      DO_TEST(actual.b == expected.b, "Got wrong blue  / v value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.b, actual.b);
+      DO_TEST(actual.a == expected.a, "Got wrong alpha     value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.a, actual.a);
     }
   }
 
@@ -102,11 +85,17 @@ int main()
   for (u32 blue = 0; blue < 256; blue++)
   {
     FillEFB(blue);
-    IntensityTest(blue);
+    for (u32 counter = 0; counter < 8; counter++)
+    {
+      const bool yuv = (counter & 1);
+      const bool intensity_fmt = (counter & 2);
+      const bool auto_conv = (counter & 4);
+      IntensityTest(blue, yuv, intensity_fmt, auto_conv);
 
-    WPAD_ScanPads();
-    if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
-      break;
+      WPAD_ScanPads();
+      if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
+        break;
+    }
   }
 
   report_test_results();
