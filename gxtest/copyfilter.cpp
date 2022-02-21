@@ -32,7 +32,7 @@ static void FillEFB(PixelFormat pixel_fmt)
   // Needed for clear to work properly. GX_CopyTex ors with 0xf, but the top bit indicating update also must be set
   CGX_LOAD_BP_REG(BPMEM_ZMODE << 24 | 0x1f);
   CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x123456);
-  GXTest::CopyToTestBuffer(0, 0, 255, 2, {.clear = true});
+  GXTest::CopyToTestBuffer(0, 0, 255, 3, {.clear = true});
   CGX_WaitForGpuToFinish();
 
   GX_PokeDither(false);
