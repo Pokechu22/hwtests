@@ -13,9 +13,9 @@
 #include "gxtest/util.h"
 
 // Use all copy filter values (0-63*3), instead of only 64
-#define FULL_COPY_FILTER_COEFS false
+#define FULL_COPY_FILTER_COEFS true
 // Use all gamma values, instead of just 1.0 (0)
-#define FULL_GAMMA false
+#define FULL_GAMMA true
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
 
@@ -309,7 +309,7 @@ int main()
       for (GammaCorrection gamma : GAMMA_VALUES)
       {
         CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, false);
-        //CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, true);
+        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, true);
 
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
