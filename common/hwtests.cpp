@@ -102,6 +102,8 @@ void report_test_results()
 {
   network_printf("%d tests passed out of %d; %lld subtests passed out of %lld\n",
                  number_of_tests_passed, number_of_tests, number_of_subtests_passed, number_of_subtests);
+  if (number_of_tests_passed == number_of_tests)
+    network_printf("All tests passed\n");
 }
 
 #define SERVER_PORT 16784
