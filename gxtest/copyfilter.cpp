@@ -33,6 +33,7 @@ static void FillEFB(PixelFormat pixel_fmt)
   GX_PokeAlphaUpdate(true);
   GX_PokeColorUpdate(true);
   GX_PokeBlendMode(GX_BM_NONE, GX_BL_ZERO, GX_BL_ZERO, GX_LO_SET);
+  GX_PokeAlphaRead(GX_READ_NONE);
   GX_PokeZMode(false, GX_ALWAYS, true);
 
   // For some reason GX_PokeARGB hangs when using this format
@@ -66,8 +67,8 @@ static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Ga
 static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
 // These formats work, though I don't know why Y8 and YUV420 do
-// static const std::array<PixelFormat, 4> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Y8, PixelFormat::YUV420 };
-static const std::array<PixelFormat, 1> PIXEL_FORMATS = { PixelFormat::RGB8_Z24 };
+static const std::array<PixelFormat, 5> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Y8, PixelFormat::V8, PixelFormat::YUV420 };
+//static const std::array<PixelFormat, 2> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::U8 };
 #endif
 
 #define MAX_COPY_FILTER 63*3
@@ -93,16 +94,14 @@ void SetCopyFilter(u8 copy_filter_sum)
   CGX_LOAD_BP_REG(BPMEM_COPYFILTER1 << 24 | copy_filter_reg_1);
 }
 
-GXTest::Vec4<u8> GetEfbColor(u8 x, PixelFormat pixel_fmt)
+GXTest::Vec4<u8> PredictEfbColor(u8 x, PixelFormat pixel_fmt, bool efb_peek = false)
 {
-  // const u8 sixbit = static_cast<u8>(((x & 0xfc) * 255) / 0xfc);
-  // const u8 fivebit = static_cast<u8>(((x & 0xf8) * 255) / 0xf8);
   const u8 sixbit = static_cast<u8>((x & 0xfc) | ((x & 0xc0) >> 6));
   const u8 fivebit = static_cast<u8>((x & 0xf8) | ((x & 0xe0) >> 5));
   switch (pixel_fmt)
   {
   case PixelFormat::RGB8_Z24:
-  case PixelFormat::Y8:
+  //case PixelFormat::Y8:
   case PixelFormat::YUV420:
   default:
     return {x, x, x, 255};
@@ -111,10 +110,54 @@ GXTest::Vec4<u8> GetEfbColor(u8 x, PixelFormat pixel_fmt)
   case PixelFormat::RGB565_Z16:
     // Does not work
     return {fivebit, sixbit, fivebit, 255};
+  case PixelFormat::Y8:
+    // This gives correct results for texture copies...
+    if (!efb_peek)
+    {
+      return {x, x, x, 255};
+    }
+    else
+    {
+      // But this is the logic behind peeks?
+      if (x <= 1)
+        return {0, 0, 0, 255};
+      else
+        return {255, 255, 255, 255};
+    }
   case PixelFormat::U8:
+    if (efb_peek)
+    {
+      // This only works for EFB peeks
+      if (x <= 1)
+        return {0, 0, 0, 255};
+      else if (x & 1)
+        return {255, 255, 255, 255};
+      else
+      {
+        /*
+        switch (x & 0xc0)
+        {
+        case 0x00: return (x & 2) ? 44 : 12;
+        case 0x40: return (x & 2) ? 109 : 77;
+        case 0x80: return (x & 2) ? 174 : 142;
+        case 0xc0: return (x & 2) ? 239 : 207;
+        }
+        */
+        u8 value = 12 + 65 * ((x & 0xc0) >> 6) + 32 * ((x & 2) >> 1);
+        return {value, value, value, 255};
+      }
+    }
+    else
+    {
+      // Dunno
+      return {0, 0, 0, 255};
+    }
   case PixelFormat::V8:
-    // Does not work
-    return {fivebit, fivebit, fivebit, 255};
+    // This works but makes no sense
+    if (x & 1)
+      return {x, x, x, 255};
+    else
+      return {fivebit, fivebit, fivebit, 255};
   case PixelFormat::Z24:
     // Does not work
     return {x, 0, 0, 255};
@@ -185,7 +228,7 @@ void CopyFilterTest(PixelFormat pixel_fmt, u8 copy_filter_sum, GammaCorrection g
   for (u32 x = 0; x < 256; x++)
   {
     // Reduce bit depth based on the format
-    GXTest::Vec4<u8> efb_color = GetEfbColor(static_cast<u8>(x), pixel_fmt);
+    GXTest::Vec4<u8> efb_color = PredictEfbColor(static_cast<u8>(x), pixel_fmt);
     // Make predictions based on the copy filter and gamma
     GXTest::Vec4<u8> expected = Predict(efb_color, copy_filter_sum, gamma, intensity);
     GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
@@ -193,6 +236,29 @@ void CopyFilterTest(PixelFormat pixel_fmt, u8 copy_filter_sum, GammaCorrection g
     DO_TEST(actual.g == expected.g, "Predicted wrong green value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), u32(intensity), expected.g, efb_color.g, actual.g);
     DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), u32(intensity), expected.b, efb_color.b, actual.b);
     DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), u32(intensity), expected.a, efb_color.a, actual.a);
+  }
+
+  END_TEST();
+}
+
+void CheckEFB(PixelFormat pixel_fmt)
+{
+  // For some reason GX_PokeARGB hangs when using this format
+  if (pixel_fmt == PixelFormat::RGB565_Z16)
+    return;
+
+  START_TEST();
+
+  for (u16 x = 0; x < 256; x++)
+  {
+    GXColor actual;
+    GX_PeekARGB(x, 1, &actual);
+    GXTest::Vec4<u8> expected = PredictEfbColor(static_cast<u8>(x), pixel_fmt, true);
+
+    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.r, actual.r);
+    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.g, actual.g);
+    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.b, actual.b);
+    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.a, actual.a);
   }
 
   END_TEST();
@@ -211,6 +277,8 @@ int main()
   for (PixelFormat pixel_fmt : PIXEL_FORMATS)
   {
     FillEFB(pixel_fmt);
+    CheckEFB(pixel_fmt);
+
 #if FULL_COPY_FILTER_COEFS
     for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
 #else
