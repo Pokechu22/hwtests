@@ -12,7 +12,7 @@
 #include "gxtest/cgx_defaults.h"
 #include "gxtest/util.h"
 
-// Use all copy filter values (0-63*3), instead of just 0-64
+// Use all copy filter values (0-63*3), instead of only 64
 #define FULL_COPY_FILTER_COEFS true
 // Use all gamma values, instead of just 1.0 (0)
 #define FULL_GAMMA true
