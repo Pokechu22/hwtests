@@ -14,11 +14,11 @@
 
 static void FillEFB(u8 blue)
 {
-  PE_CONTROL ctrl;
+  PEControl ctrl;
   ctrl.hex = BPMEM_ZCOMPARE << 24;
-  ctrl.pixel_format = PIXELFMT_RGB8_Z24;
-  ctrl.zformat = ZC_LINEAR;
-  ctrl.early_ztest = 0;
+  ctrl.pixel_format = PixelFormat::RGB8_Z24;
+  ctrl.zformat = DepthFormat::ZLINEAR;
+  ctrl.early_ztest = false;
   CGX_LOAD_BP_REG(ctrl.hex);
   CGX_WaitForGpuToFinish();
 
@@ -55,7 +55,7 @@ void IntensityTest(u8 blue)
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, false);
+  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GammaCorrection::Gamma1_0, false);
   CGX_WaitForGpuToFinish();
   // First do a sanity-check to make sure that the EFB contains the expected RGB values
 
@@ -73,7 +73,7 @@ void IntensityTest(u8 blue)
   }
 
   // Now do an intensity-format copy
-  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GAMMA_1_0, true);
+  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GammaCorrection::Gamma1_0, true);
   CGX_WaitForGpuToFinish();
 
   for (u32 x = 0; x < 256; x++)
