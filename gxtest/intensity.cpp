@@ -55,7 +55,7 @@ void IntensityTest(u8 blue)
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GammaCorrection::Gamma1_0, false);
+  GXTest::CopyToTestBuffer(0, 0, 255, 255);
   CGX_WaitForGpuToFinish();
   // First do a sanity-check to make sure that the EFB contains the expected RGB values
 
@@ -73,7 +73,7 @@ void IntensityTest(u8 blue)
   }
 
   // Now do an intensity-format copy
-  GXTest::CopyToTestBuffer(0, 0, 255, 255, false, GammaCorrection::Gamma1_0, true);
+  GXTest::CopyToTestBuffer(0, 0, 255, 255, {.intensity_fmt = true, .auto_conv = true});
   CGX_WaitForGpuToFinish();
 
   for (u32 x = 0; x < 256; x++)
