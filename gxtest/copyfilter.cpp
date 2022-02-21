@@ -19,13 +19,13 @@
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
 
-static void FillEFB(u32 pixel_fmt)
+static void FillEFB(PixelFormat pixel_fmt)
 {
-  PE_CONTROL ctrl;
+  PEControl ctrl;
   ctrl.hex = BPMEM_ZCOMPARE << 24;
   ctrl.pixel_format = pixel_fmt;
-  ctrl.zformat = ZC_LINEAR;
-  ctrl.early_ztest = 0;
+  ctrl.zformat = DepthFormat::ZLINEAR;
+  ctrl.early_ztest = false;
   CGX_LOAD_BP_REG(ctrl.hex);
   CGX_WaitForGpuToFinish();
 
@@ -36,7 +36,7 @@ static void FillEFB(u32 pixel_fmt)
   GX_PokeZMode(false, GX_ALWAYS, true);
 
   // For some reason GX_PokeARGB hangs when using this format
-  if (pixel_fmt == PIXELFMT_RGB565_Z16)
+  if (pixel_fmt == PixelFormat::RGB565_Z16)
     return;
 
   for (u16 x = 0; x < 256; x++)
@@ -56,18 +56,18 @@ static void FillEFB(u32 pixel_fmt)
 }
 
 #if FULL_GAMMA
-static const std::array<u32, 4> GAMMA_VALUES = { GAMMA_1_0, GAMMA_1_7, GAMMA_2_2, GAMMA_INVALID_2_2 };
+static const std::array<GammaCorrection, 4> GAMMA_VALUES = { GammaCorrection::Gamma1_0, GammaCorrection::Gamma1_7, GammaCorrection::Gamma2_2, GammaCorrection::Invalid2_2 };
 #else
-static const std::array<u32, 1> GAMMA_VALUES = { GAMMA_1_0 };
+static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Gamma1_0 };
 #endif
 
 #if FULL_PIXEL_FORMATS
-// static const std::array<u32, 3> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16 };
-static const std::array<u32, 8> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_RGB565_Z16, PIXELFMT_Z24, PIXELFMT_Y8, PIXELFMT_U8, PIXELFMT_V8, PIXELFMT_YUV420 };
+// static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16 };
+static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
 // These formats work, though I don't know why Y8 and YUV420 do
-// static const std::array<u32, 4> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24, PIXELFMT_RGBA6_Z24, PIXELFMT_Y8, PIXELFMT_YUV420 };
-static const std::array<u32, 1> PIXEL_FORMATS = { PIXELFMT_RGB8_Z24 };
+// static const std::array<PixelFormat, 4> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Y8, PixelFormat::YUV420 };
+static const std::array<PixelFormat, 1> PIXEL_FORMATS = { PixelFormat::RGB8_Z24 };
 #endif
 
 #if FULL_COPY_FILTER_COEFS
@@ -97,7 +97,7 @@ void SetCopyFilter(u8 copy_filter_sum)
   CGX_LOAD_BP_REG(BPMEM_COPYFILTER1 << 24 | copy_filter_reg_1);
 }
 
-GXTest::Vec4<u8> GetEfbColor(u8 x, u32 pixel_fmt)
+GXTest::Vec4<u8> GetEfbColor(u8 x, PixelFormat pixel_fmt)
 {
   // const u8 sixbit = static_cast<u8>(((x & 0xfc) * 255) / 0xfc);
   // const u8 fivebit = static_cast<u8>(((x & 0xf8) * 255) / 0xf8);
@@ -105,27 +105,27 @@ GXTest::Vec4<u8> GetEfbColor(u8 x, u32 pixel_fmt)
   const u8 fivebit = static_cast<u8>((x & 0xf8) | ((x & 0xe0) >> 5));
   switch (pixel_fmt)
   {
-  case PIXELFMT_RGB8_Z24:
-  case PIXELFMT_Y8:
-  case PIXELFMT_YUV420:
+  case PixelFormat::RGB8_Z24:
+  case PixelFormat::Y8:
+  case PixelFormat::YUV420:
   default:
     return {x, x, x, 255};
-  case PIXELFMT_RGBA6_Z24:
+  case PixelFormat::RGBA6_Z24:
     return {sixbit, sixbit, sixbit, sixbit};
-  case PIXELFMT_RGB565_Z16:
+  case PixelFormat::RGB565_Z16:
     // Does not work
     return {fivebit, sixbit, fivebit, 255};
-  case PIXELFMT_U8:
-  case PIXELFMT_V8:
+  case PixelFormat::U8:
+  case PixelFormat::V8:
     // Does not work
     return {fivebit, fivebit, fivebit, 255};
-  case PIXELFMT_Z24:
+  case PixelFormat::Z24:
     // Does not work
     return {x, 0, 0, 255};
   }
 }
 
-u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
+u8 Predict(u8 value, u8 copy_filter_sum, GammaCorrection gamma)
 {
   // Apply copy filter
   u32 prediction_i = static_cast<u32>(value) * static_cast<u32>(copy_filter_sum);
@@ -135,17 +135,17 @@ u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
   prediction_i &= 0x1ffu;
   prediction_i = std::min(prediction_i, 0xffu);
   // Apply gamma
-  if (gamma != GAMMA_1_0)
+  if (gamma != GammaCorrection::Gamma1_0)
   {
     // Convert from [0-255] to [0-1]
     float prediction_f = static_cast<float>(prediction_i) / 255.f;
     switch (gamma)
     {
-    case GAMMA_1_7:
+    case GammaCorrection::Gamma1_7:
       prediction_f = std::pow(prediction_f, 1 / 1.7f);
       break;
-    case GAMMA_2_2:
-    case GAMMA_INVALID_2_2:
+    case GammaCorrection::Gamma2_2:
+    case GammaCorrection::Invalid2_2:
     default:
       prediction_f = std::pow(prediction_f, 1 / 2.2f);
       break;
@@ -159,7 +159,7 @@ u8 Predict(u8 value, u8 copy_filter_sum, u32 gamma)
   return static_cast<u8>(prediction_i);
 }
 
-GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, u8 copy_filter_sum, u32 gamma, bool intensity)
+GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, u8 copy_filter_sum, GammaCorrection gamma, bool intensity)
 {
   const u8 r = Predict(efb_color.r, copy_filter_sum, gamma);
   const u8 g = Predict(efb_color.g, copy_filter_sum, gamma);
@@ -179,7 +179,7 @@ GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, u8 copy_filter_sum, u32 gam
   }
 }
 
-void CopyFilterTest(u32 pixel_fmt, u8 copy_filter_sum, u32 gamma, bool intensity)
+void CopyFilterTest(PixelFormat pixel_fmt, u8 copy_filter_sum, GammaCorrection gamma, bool intensity)
 {
   START_TEST();
 
@@ -193,10 +193,10 @@ void CopyFilterTest(u32 pixel_fmt, u8 copy_filter_sum, u32 gamma, bool intensity
     // Make predictions based on the copy filter and gamma
     GXTest::Vec4<u8> expected = Predict(efb_color, copy_filter_sum, gamma, intensity);
     GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
-    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.r, efb_color.r, actual.r);
-    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.g, efb_color.g, actual.g);
-    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.b, efb_color.b, actual.b);
-    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, pixel_fmt, copy_filter_sum, gamma, u32(intensity), expected.a, efb_color.a, actual.a);
+    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), u32(intensity), expected.r, efb_color.r, actual.r);
+    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), u32(intensity), expected.g, efb_color.g, actual.g);
+    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), u32(intensity), expected.b, efb_color.b, actual.b);
+    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x %d pixel format %d copy filter %d gamma %d intensity %d: expected %d from %d, was %d", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), u32(intensity), expected.a, efb_color.a, actual.a);
   }
 
   END_TEST();
@@ -212,13 +212,13 @@ int main()
   network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
   network_printf("FULL_PIXEL_FORMATS: %s\n", FULL_PIXEL_FORMATS ? "true" : "false");
 
-  for (u32 pixel_fmt : PIXEL_FORMATS)
+  for (PixelFormat pixel_fmt : PIXEL_FORMATS)
   {
     FillEFB(pixel_fmt);
     for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
     {
       SetCopyFilter(copy_filter_sum);
-      for (u32 gamma : GAMMA_VALUES)
+      for (GammaCorrection gamma : GAMMA_VALUES)
       {
         CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, false);
         CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, true);
