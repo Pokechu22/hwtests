@@ -26,7 +26,7 @@ int server_socket;
 
 // This is for Dolphin's benefit (with OSREPORT HLE). It won't end up on screen.
 // __attribute__((weak)) is needed so that it doesn't get optimized out.
-extern "C" __attribute__((weak)) void OSReport(const char* fmt, ...) {}
+extern "C" __attribute__((weak)) void OSReport([[maybe_unused]] const char* fmt, ...) {}
 
 void network_vprintf(const char* str, va_list args)
 {
@@ -93,7 +93,7 @@ void privEndTest()
   number_of_subtests_passed += status.num_passes;
 }
 
-void privSimpleTest(bool condition, const char* file, int line, const char* fail_msg, ...)
+void privSimpleTest([[maybe_unused]] bool condition, [[maybe_unused]] const char* file, [[maybe_unused]] int line, [[maybe_unused]] const char* fail_msg, ...)
 {
   // TODO
 }
