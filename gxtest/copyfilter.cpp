@@ -13,9 +13,9 @@
 #include "gxtest/util.h"
 
 // Use all copy filter values (0-63*3), instead of only 64
-#define FULL_COPY_FILTER_COEFS true
+#define FULL_COPY_FILTER_COEFS false
 // Use all gamma values, instead of just 1.0 (0)
-#define FULL_GAMMA true
+#define FULL_GAMMA false
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
 
@@ -27,6 +27,12 @@ static void FillEFB(PixelFormat pixel_fmt)
   ctrl.zformat = DepthFormat::ZLINEAR;
   ctrl.early_ztest = false;
   CGX_LOAD_BP_REG(ctrl.hex);
+  CGX_WaitForGpuToFinish();
+
+  // Needed for clear to work properly. GX_CopyTex ors with 0xf, but the top bit indicating update also must be set
+  CGX_LOAD_BP_REG(BPMEM_ZMODE << 24 | 0x1f);
+  CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x123456);
+  GXTest::CopyToTestBuffer(0, 0, 255, 2, {.clear = true});
   CGX_WaitForGpuToFinish();
 
   GX_PokeDither(false);
@@ -51,7 +57,7 @@ static void FillEFB(PixelFormat pixel_fmt)
       color.b = static_cast<u8>(x);
       color.a = static_cast<u8>(x);
       GX_PokeARGB(x, y, color);
-      GX_PokeZ(x, y, x);
+      //GX_PokeZ(x, y, x);
     }
   }
 }
@@ -67,8 +73,8 @@ static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Ga
 static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
 // These formats work, though I don't know why Y8 and YUV420 do
-static const std::array<PixelFormat, 5> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Y8, PixelFormat::V8, PixelFormat::YUV420 };
-//static const std::array<PixelFormat, 2> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::U8 };
+//static const std::array<PixelFormat, 5> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Y8, PixelFormat::V8, PixelFormat::YUV420 };
+static const std::array<PixelFormat, 2> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::Z24 };
 #endif
 
 #define MAX_COPY_FILTER 63*3
@@ -160,7 +166,7 @@ GXTest::Vec4<u8> PredictEfbColor(u8 x, PixelFormat pixel_fmt, bool efb_peek = fa
       return {fivebit, fivebit, fivebit, 255};
   case PixelFormat::Z24:
     // Does not work
-    return {x, 0, 0, 255};
+    return {0x12, 0x34, 0x56, 255};
   }
 }
 
@@ -249,16 +255,30 @@ void CheckEFB(PixelFormat pixel_fmt)
 
   START_TEST();
 
-  for (u16 x = 0; x < 256; x++)
+  if (pixel_fmt != PixelFormat::Z24)
   {
-    GXColor actual;
-    GX_PeekARGB(x, 1, &actual);
-    GXTest::Vec4<u8> expected = PredictEfbColor(static_cast<u8>(x), pixel_fmt, true);
+    for (u16 x = 0; x < 256; x++)
+    {
+      GXColor actual;
+      GX_PeekARGB(x, 1, &actual);
+      GXTest::Vec4<u8> expected = PredictEfbColor(static_cast<u8>(x), pixel_fmt, true);
 
-    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.r, actual.r);
-    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.g, actual.g);
-    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.b, actual.b);
-    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.a, actual.a);
+      DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.r, actual.r);
+      DO_TEST(actual.g == expected.g, "Predicted wrong green value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.g, actual.g);
+      DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.b, actual.b);
+      DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected.a, actual.a);
+    }
+  }
+  else
+  {
+    for (u16 x = 0; x < 256; x++)
+    {
+      u32 actual;
+      GX_PeekZ(x, 1, &actual);
+      u32 expected = 0x123456;
+
+      DO_TEST(actual == expected, "Predicted wrong z value for x %d pixel format %d using peeks: expected %d, was %d", x, u32(pixel_fmt), expected, actual);
+    }
   }
 
   END_TEST();
@@ -289,7 +309,7 @@ int main()
       for (GammaCorrection gamma : GAMMA_VALUES)
       {
         CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, false);
-        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, true);
+        //CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, true);
 
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
