@@ -70,11 +70,7 @@ static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24,
 static const std::array<PixelFormat, 1> PIXEL_FORMATS = { PixelFormat::RGB8_Z24 };
 #endif
 
-#if FULL_COPY_FILTER_COEFS
 #define MAX_COPY_FILTER 63*3
-#else
-#define MAX_COPY_FILTER 64
-#endif
 void SetCopyFilter(u8 copy_filter_sum)
 {
   // Each field in the copy filter ranges from 0-63, and the middle 3 values
@@ -215,7 +211,11 @@ int main()
   for (PixelFormat pixel_fmt : PIXEL_FORMATS)
   {
     FillEFB(pixel_fmt);
+#if FULL_COPY_FILTER_COEFS
     for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
+#else
+    const u8 copy_filter_sum = 64;
+#endif
     {
       SetCopyFilter(copy_filter_sum);
       for (GammaCorrection gamma : GAMMA_VALUES)
