@@ -15,9 +15,72 @@
 #undef None
 #undef Always
 
-enum class TextureFormat;
-enum class EFBCopyFormat;
-enum class TLUTFormat;
+enum class TextureFormat
+{
+  // These values represent texture format in GX registers.
+  I4 = 0x0,
+  I8 = 0x1,
+  IA4 = 0x2,
+  IA8 = 0x3,
+  RGB565 = 0x4,
+  RGB5A3 = 0x5,
+  RGBA8 = 0x6,
+  C4 = 0x8,
+  C8 = 0x9,
+  C14X2 = 0xA,
+  CMPR = 0xE,
+
+  // Special texture format used to represent YUVY xfb copies.
+  // They aren't really textures, but they share so much hardware and usecases that it makes sense
+  // to emulate them as part of texture cache.
+  // This isn't a real value that can be used on console; it only exists for ease of implementation.
+  XFB = 0xF,
+};
+
+enum class TLUTFormat
+{
+  // These values represent TLUT format in GX registers.
+  IA8 = 0x0,
+  RGB565 = 0x1,
+  RGB5A3 = 0x2,
+};
+
+enum class EFBCopyFormat
+{
+  // These values represent EFB copy format in GX registers.
+  // Most (but not all) of these values correspond to values of TextureFormat.
+  R4 = 0x0,  // R4, I4, Z4
+
+  // FIXME: Does 0x1 (Z8) have identical results to 0x8 (Z8H)?
+  //        Is either or both of 0x1 and 0x8 used in games?
+  R8_0x1 = 0x1,  // R8, I8, Z8H (?)
+
+  RA4 = 0x2,  // RA4, IA4
+
+  // FIXME: Earlier versions of this file named the value 0x3 "GX_TF_Z16", which does not reflect
+  //        the results one would expect when copying from the depth buffer with this format.
+  //        For reference: When copying from the depth buffer, R should receive the top 8 bits of
+  //                       the Z value, and A should be either 0xFF or 0 (please investigate).
+  //        Please test original hardware and make sure dolphin-emu implements this format
+  //        correctly.
+  RA8 = 0x3,  // RA8, IA8, (FIXME: Z16 too?)
+
+  RGB565 = 0x4,
+  RGB5A3 = 0x5,
+  RGBA8 = 0x6,  // RGBA8, Z24
+  A8 = 0x7,
+  R8 = 0x8,   // R8, I8, Z8H
+  G8 = 0x9,   // G8, Z8M
+  B8 = 0xA,   // B8, Z8L
+  RG8 = 0xB,  // RG8, Z16R (Note: G and R are reversed)
+  GB8 = 0xC,  // GB8, Z16L
+
+  // Special texture format used to represent YUVY xfb copies.
+  // They aren't really textures, but they share so much hardware and usecases that it makes sense
+  // to emulate them as part of texture cache.
+  // This isn't a real value that can be used on console; it only exists for ease of implementation.
+  XFB = 0xF,
+};
 
 #pragma pack(4)
 
@@ -1011,6 +1074,12 @@ union UPE_Copy
   BitField<15, 1, bool, u32> intensity_fmt;  // if set, is an intensity format (I4,I8,IA4,IA8)
   // if false automatic color conversion by texture format and pixel type
   BitField<16, 1, bool, u32> auto_conv;
+
+  void SetRealFormat(EFBCopyFormat format)
+  {
+    u32 format_raw = static_cast<u32>(format);
+    target_pixel_format = ((format_raw & 7) << 1) | ((format_raw & 8) >> 3);
+  }
 
   EFBCopyFormat tp_realFormat() const
   {
