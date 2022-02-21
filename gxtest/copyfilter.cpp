@@ -222,7 +222,7 @@ void CopyFilterTest(PixelFormat pixel_fmt, u8 copy_filter_sum, GammaCorrection g
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 2, false, gamma, intensity);
+  GXTest::CopyToTestBuffer(0, 0, 255, 2, {.gamma = gamma, .intensity_fmt = intensity, .auto_conv = intensity});
   CGX_WaitForGpuToFinish();
 
   for (u32 x = 0; x < 256; x++)
