@@ -167,7 +167,7 @@ void TevCombinerTest()
     int expected = TevCombinerExpectation(a, b, c, d, cc.scale, cc.bias, cc.op, cc.clamp);
     DO_TEST(result == expected, "Mismatch on a={}, b={}, c={}, d={}, shift={}, bias={}, op={}, "
                                 "clamp={}: expected {}, got {}",
-            a, b, c, d, u32(cc.scale.Value()), u32(cc.bias.Value()), u32(cc.op.Value()), cc.clamp, expected, result);
+            a, b, c, d, cc.scale, cc.bias, cc.op, cc.clamp, expected, result);
 
     WPAD_ScanPads();
 
