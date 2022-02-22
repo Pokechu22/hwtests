@@ -54,27 +54,17 @@ void privStartTest(const char* file, int line)
   number_of_tests++;
 }
 
-void privDoTest(bool condition, const char* file, int line, const char* fail_msg, ...)
+void privTestPassed()
 {
-  va_list arglist;
-  va_start(arglist, fail_msg);
-
   ++status.num_subtests;
+  ++status.num_passes;
+}
 
-  if (condition)
-  {
-    ++status.num_passes;
-  }
-  else
-  {
-    ++status.num_failures;
-
-    // TODO: vprintf forwarding doesn't seem to work?
-    network_printf("Subtest %lld failed in %s on line %d: ", status.num_subtests, file, line);
-    network_vprintf(fail_msg, arglist);
-    network_printf("\n");
-  }
-  va_end(arglist);
+void privTestFailed(const char* file, int line, const std::string& fail_msg)
+{
+  ++status.num_subtests;
+  ++status.num_failures;
+  network_printf("Subtest %lld failed in %s on line %d: %s\n", status.num_subtests, file, line, fail_msg.c_str());
 }
 
 void privEndTest()
