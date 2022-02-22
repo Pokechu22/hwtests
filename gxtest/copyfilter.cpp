@@ -63,19 +63,17 @@ static void FillEFB(PixelFormat pixel_fmt)
   CGX_WaitForGpuToFinish();
 
   // Needed for clear to work properly. GX_CopyTex ors with 0xf, but the top bit indicating update also must be set
-  /*
   CGX_LOAD_BP_REG(BPMEM_ZMODE << 24 | 0x1f);
   CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x123456);
   GXTest::CopyToTestBuffer(0, 0, 255, 3, {.clear = true});
   CGX_WaitForGpuToFinish();
-  */
 
   GX_PokeDither(false);
   GX_PokeAlphaUpdate(true);
   GX_PokeColorUpdate(true);
   GX_PokeBlendMode(GX_BM_NONE, GX_BL_ZERO, GX_BL_ZERO, GX_LO_SET);
   GX_PokeAlphaRead(GX_READ_NONE);
-  GX_PokeZMode(true, GX_ALWAYS, true);
+  GX_PokeZMode(false, GX_ALWAYS, true);
 
   // For some reason GX_PokeARGB hangs when using this format
   if (pixel_fmt == PixelFormat::RGB565_Z16)
@@ -92,7 +90,7 @@ static void FillEFB(PixelFormat pixel_fmt)
       color.b = color_tmp.b;
       color.a = color_tmp.a;
       GX_PokeARGB(x, y, color);
-      GX_PokeZ(x, y, x);
+      //GX_PokeZ(x, y, x);
     }
   }
 }
@@ -226,7 +224,7 @@ GXTest::Vec4<u8> PredictEfbColor(u16 x, u16 y, PixelFormat pixel_fmt, bool efb_p
     return {V8Transform(color.r), V8Transform(color.g), V8Transform(color.b), 255};
   case PixelFormat::Z24:
     // Does not work
-    return {0, 0, x, 255};
+    return {0x12, 0x34, 0x56, 255};
   }
 }
 
@@ -344,7 +342,7 @@ void CheckEFB(PixelFormat pixel_fmt)
       {
         u32 actual;
         GX_PeekZ(x, y, &actual);
-        u32 expected = x;
+        u32 expected = 0x123456;
 
         DO_TEST(actual == expected, "Predicted wrong z value for x {} y {} pixel format {} using peeks: expected {}, was {}", x, y, pixel_fmt, expected, actual);
       }
