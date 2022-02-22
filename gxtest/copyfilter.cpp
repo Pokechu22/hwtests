@@ -19,6 +19,8 @@
 #define FULL_GAMMA true
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
+// Also set the copy filter values for prev and next rows
+#define CHECK_PREV_AND_NEXT true
 
 struct CopyFilterTestContext
 {
@@ -46,10 +48,14 @@ struct fmt::formatter<CopyFilterTestContext>
 GXTest::Vec4<u8> GenerateEFBColor(u16 x, u16 y)
 {
   const u8 r = static_cast<u8>(x);
-  const u8 g = static_cast<u8>(y == 1 ? x : (y == 2 ? 255 : 0));
+  const u8 g = static_cast<u8>(y == 4 ? x : (y == 3 ? 255 : 0));
   const u8 b = static_cast<u8>(x);
   const u8 a = static_cast<u8>(x);
   return {r, g, b, a};
+}
+u32 GenerateEFBDepth([[maybe_unused]] u16 x, u16 y)
+{
+  return y < 4 ? 0x123456 : 0x789abc;
 }
 
 static void FillEFB(PixelFormat pixel_fmt)
@@ -65,7 +71,10 @@ static void FillEFB(PixelFormat pixel_fmt)
   // Needed for clear to work properly. GX_CopyTex ors with 0xf, but the top bit indicating update also must be set
   CGX_LOAD_BP_REG(BPMEM_ZMODE << 24 | 0x1f);
   CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x123456);
+  // For some reason, Z isn't cleared properly if the height isn't set to 4 (3 inclusive)
   GXTest::CopyToTestBuffer(0, 0, 255, 3, {.clear = true});
+  CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x789abc);
+  GXTest::CopyToTestBuffer(0, 4, 255, 7, {.clear = true});
   CGX_WaitForGpuToFinish();
 
   GX_PokeDither(false);
@@ -81,7 +90,7 @@ static void FillEFB(PixelFormat pixel_fmt)
 
   for (u16 x = 0; x < 256; x++)
   {
-    for (u16 y = 0; y < 3; y++)
+    for (u16 y = 0; y < 8; y++)
     {
       GXTest::Vec4<u8> color_tmp = GenerateEFBColor(x, y);
       GXColor color;
@@ -90,7 +99,8 @@ static void FillEFB(PixelFormat pixel_fmt)
       color.b = color_tmp.b;
       color.a = color_tmp.a;
       GX_PokeARGB(x, y, color);
-      //GX_PokeZ(x, y, x);
+      // GX_PokeZ doesn't seem to work at all
+      // GX_PokeZ(x, y, GenerateEFBDepth(x, y));
     }
   }
 }
@@ -104,28 +114,38 @@ static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Ga
 #if FULL_PIXEL_FORMATS
 static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
-// These formats work, though I don't know why Y8 and YUV420 do
-//static const std::array<PixelFormat, 5> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Y8, PixelFormat::V8, PixelFormat::YUV420 };
 // These formats work on Dolphin and on real hardware
 static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
 #endif
 
-#define MAX_COPY_FILTER 63*3
-void SetCopyFilter(u8 copy_filter_sum)
+// Applies to current row
+#define MAX_COPY_FILTER_CUR 63*3
+#define MAX_COPY_FILTER_PREV 63*2
+#define MAX_COPY_FILTER_NEXT 63*2
+void SetCopyFilter(const CopyFilterTestContext& ctx)
 {
   // Each field in the copy filter ranges from 0-63, and the middle 3 values
   // all apply to the current row of pixels.  This means that up to 63*3
-  // can be used for the current row.
-  // We currently ignore the case of copy_filter_sum >= MAX_COPY_FILTER.
+  // can be used for the current row (while 63*2 is the max for the others).
+  // If the value is outside of that range, we just treat it as the maximum.
   CopyFilterCoefficients coef;
   coef.Low = BPMEM_COPYFILTER0 << 24;
   coef.High = BPMEM_COPYFILTER1 << 24;
 
-  coef.w3 = std::min<u8>(copy_filter_sum, 63);
-  if (copy_filter_sum > 63)
-    coef.w2 = std::min<u8>(copy_filter_sum - 63, 63);
-  if (copy_filter_sum > 63*2)
-    coef.w4 = std::min<u8>(copy_filter_sum - 63 * 2, 63);
+  // Previous row (w0, w1)
+  coef.w0 = std::min<u8>(ctx.prev_copy_filter_sum, 63);
+  if (ctx.prev_copy_filter_sum > 63)
+    coef.w1 = std::min<u8>(ctx.prev_copy_filter_sum - 63, 63);
+  // Current row (w2, w3, w4)
+  coef.w3 = std::min<u8>(ctx.copy_filter_sum, 63);
+  if (ctx.copy_filter_sum > 63)
+    coef.w2 = std::min<u8>(ctx.copy_filter_sum - 63, 63);
+  if (ctx.copy_filter_sum > 63 * 2)
+    coef.w4 = std::min<u8>(ctx.copy_filter_sum - 63 * 2, 63);
+  // Next row (w5, w6)
+  coef.w5 = std::min<u8>(ctx.next_copy_filter_sum, 63);
+  if (ctx.next_copy_filter_sum > 63)
+    coef.w6 = std::min<u8>(ctx.next_copy_filter_sum - 63, 63);
 
   CGX_LOAD_BP_REG(coef.Low);
   CGX_LOAD_BP_REG(coef.High);
@@ -197,6 +217,7 @@ GXTest::Vec4<u8> PredictEfbColor(u16 x, u16 y, PixelFormat pixel_fmt, bool efb_p
   case PixelFormat::RGB565_Z16:
     // Does not work
     return {FiveBit(color.r), SixBit(color.g), SixBit(color.a), 255};
+  // These worked when setting r, g, and b to the same value, but don't work anymore
   case PixelFormat::Y8:
     if (!efb_peek)
     {
@@ -223,8 +244,13 @@ GXTest::Vec4<u8> PredictEfbColor(u16 x, u16 y, PixelFormat pixel_fmt, bool efb_p
     // This works but makes no sense
     return {V8Transform(color.r), V8Transform(color.g), V8Transform(color.b), 255};
   case PixelFormat::Z24:
-    // Does not work
-    return {0x12, 0x34, 0x56, 255};
+  {
+    const u32 depth = GenerateEFBDepth(x, y);
+    const u8 r = (depth >> 16) & 255;
+    const u8 g = (depth >> 8) & 255;
+    const u8 b = depth & 255;
+    return {r, g, b, 255};
+  }
   }
 }
 
@@ -288,18 +314,19 @@ void CopyFilterTest(const CopyFilterTestContext& ctx)
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 2, {.gamma = ctx.gamma, .intensity_fmt = ctx.intensity_fmt, .auto_conv = ctx.intensity_fmt});
+  SetCopyFilter(ctx);
+  GXTest::CopyToTestBuffer(0, 0, 255, 7, {.gamma = ctx.gamma, .intensity_fmt = ctx.intensity_fmt, .auto_conv = ctx.intensity_fmt});
   CGX_WaitForGpuToFinish();
 
   for (u16 x = 0; x < 256; x++)
   {
     // Reduce bit depth based on the format
-    GXTest::Vec4<u8> prev_efb_color = PredictEfbColor(x, 0, ctx.pixel_fmt);
-    GXTest::Vec4<u8> efb_color = PredictEfbColor(x, 1, ctx.pixel_fmt);
-    GXTest::Vec4<u8> next_efb_color = PredictEfbColor(x, 2, ctx.pixel_fmt);
+    GXTest::Vec4<u8> prev_efb_color = PredictEfbColor(x, 3, ctx.pixel_fmt);
+    GXTest::Vec4<u8> efb_color = PredictEfbColor(x, 4, ctx.pixel_fmt);
+    GXTest::Vec4<u8> next_efb_color = PredictEfbColor(x, 5, ctx.pixel_fmt);
     // Make predictions based on the copy filter and gamma
     GXTest::Vec4<u8> expected = Predict(prev_efb_color, efb_color, next_efb_color, ctx);
-    GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
+    GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 4, 256);
     DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} with {}: expected {} from {}/{}/{}, was {}", x, ctx, expected.r, prev_efb_color.r, efb_color.r, next_efb_color.r, actual.r);
     DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} with {}: expected {} from {}/{}/{}, was {}", x, ctx, expected.g, prev_efb_color.g, efb_color.g, next_efb_color.g, actual.g);
     DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} with {}: expected {} from {}/{}/{}, was {}", x, ctx, expected.b, prev_efb_color.b, efb_color.b, next_efb_color.b, actual.b);
@@ -321,7 +348,7 @@ void CheckEFB(PixelFormat pixel_fmt)
   {
     for (u16 x = 0; x < 256; x++)
     {
-      for (u16 y = 0; y < 3; y++)
+      for (u16 y = 0; y < 8; y++)
       {
         GXColor actual;
         GX_PeekARGB(x, y, &actual);
@@ -338,11 +365,11 @@ void CheckEFB(PixelFormat pixel_fmt)
   {
     for (u16 x = 0; x < 256; x++)
     {
-      for (u16 y = 0; y < 3; y++)
+      for (u16 y = 0; y < 8; y++)
       {
         u32 actual;
         GX_PeekZ(x, y, &actual);
-        u32 expected = 0x123456;
+        u32 expected = GenerateEFBDepth(x, y);
 
         DO_TEST(actual == expected, "Predicted wrong z value for x {} y {} pixel format {} using peeks: expected {}, was {}", x, y, pixel_fmt, expected, actual);
       }
@@ -368,20 +395,37 @@ int main()
     CheckEFB(pixel_fmt);
 
 #if FULL_COPY_FILTER_COEFS
-    for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER; copy_filter_sum++)
+    for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER_CUR; copy_filter_sum++)
 #else
     const u8 copy_filter_sum = 64;
 #endif
     {
-      SetCopyFilter(copy_filter_sum);
       for (GammaCorrection gamma : GAMMA_VALUES)
       {
-        CopyFilterTest({pixel_fmt, gamma, 0, copy_filter_sum, 0, false});
-        CopyFilterTest({pixel_fmt, gamma, 0, copy_filter_sum, 0, true});
+#if CHECK_PREV_AND_NEXT
+        // Start at 2 to avoid boring case of cur_row = prev_row = next_row = false
+        // which would encode all copy filter parameters as 0
+        // That case is already covered by copy_filter_sum = 0 anyways
+        for (u32 flags = 2; flags < 16; flags++)
+#else
+        for (u32 flags = 2; flags < 4; flags++)
+#endif
+        {
+          const bool intensity_fmt = (flags & 1) != 0;
+          const bool cur_row = (flags & 2) != 0;
+          const bool prev_row = (flags & 4) != 0;
+          const bool next_row = (flags & 8) != 0;
 
-        WPAD_ScanPads();
-        if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
-          goto done;
+          const u8 prev_sum = std::min(prev_row ? copy_filter_sum : 0, MAX_COPY_FILTER_PREV);
+          const u8 cur_sum = std::min(cur_row ? copy_filter_sum : 0, MAX_COPY_FILTER_CUR);
+          const u8 next_sum = std::min(next_row ? copy_filter_sum : 0, MAX_COPY_FILTER_NEXT);
+
+          CopyFilterTest({pixel_fmt, gamma, prev_sum, cur_sum, next_sum, intensity_fmt});
+
+          WPAD_ScanPads();
+          if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
+            goto done;
+        }
       }
     }
   }
