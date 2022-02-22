@@ -65,10 +65,10 @@ void IntensityTest(u8 blue, bool yuv, bool intensity_fmt, bool auto_conv)
       GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, y, 256);
       bool actually_is_intensity = intensity_fmt && auto_conv;
       GXTest::Vec4<u8> expected = actually_is_intensity ? GetIntensityColor(x, y, blue, 255) : GXTest::Vec4<u8>{static_cast<u8>(x), static_cast<u8>(y), blue, 255};
-      DO_TEST(actual.r == expected.r, "Got wrong red   / y value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.r, actual.r);
-      DO_TEST(actual.g == expected.g, "Got wrong green / u value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.g, actual.g);
-      DO_TEST(actual.b == expected.b, "Got wrong blue  / v value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.b, actual.b);
-      DO_TEST(actual.a == expected.a, "Got wrong alpha     value for x %d y %d blue %d, %d %d %d: expected %d, was %d", x, y, blue, yuv, intensity_fmt, auto_conv, expected.a, actual.a);
+      DO_TEST(actual.r == expected.r, "Got wrong red   / y value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.r, actual.r);
+      DO_TEST(actual.g == expected.g, "Got wrong green / u value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.g, actual.g);
+      DO_TEST(actual.b == expected.b, "Got wrong blue  / v value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.b, actual.b);
+      DO_TEST(actual.a == expected.a, "Got wrong alpha     value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.a, actual.a);
     }
   }
 
