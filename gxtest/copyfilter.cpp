@@ -43,6 +43,15 @@ struct fmt::formatter<CopyFilterTestContext>
   }
 };
 
+GXTest::Vec4<u8> GenerateEFBColor(u16 x, u16 y)
+{
+  const u8 r = static_cast<u8>(x);
+  const u8 g = static_cast<u8>(y == 1 ? x : (y == 2 ? 255 : 0));
+  const u8 b = static_cast<u8>(x);
+  const u8 a = static_cast<u8>(x);
+  return {r, g, b, a};
+}
+
 static void FillEFB(PixelFormat pixel_fmt)
 {
   PEControl ctrl;
@@ -74,12 +83,12 @@ static void FillEFB(PixelFormat pixel_fmt)
   {
     for (u16 y = 0; y < 3; y++)
     {
-      // Fill the EFB with a gradient where all components = x
+      GXTest::Vec4<u8> color_tmp = GenerateEFBColor(x, y);
       GXColor color;
-      color.r = static_cast<u8>(x);
-      color.g = static_cast<u8>(x);
-      color.b = static_cast<u8>(x);
-      color.a = static_cast<u8>(x);
+      color.r = color_tmp.r;
+      color.g = color_tmp.g;
+      color.b = color_tmp.b;
+      color.a = color_tmp.a;
       GX_PokeARGB(x, y, color);
       //GX_PokeZ(x, y, x);
     }
@@ -108,73 +117,102 @@ void SetCopyFilter(u8 copy_filter_sum)
   // all apply to the current row of pixels.  This means that up to 63*3
   // can be used for the current row.
   // We currently ignore the case of copy_filter_sum >= MAX_COPY_FILTER.
-  u8 w4 = std::min<u8>(copy_filter_sum, 63);
-  u8 w3 = 0;
-   if (copy_filter_sum > 63)
-    w3 = std::min<u8>(copy_filter_sum - 63, 63);
-  u8 w5 = 0;
-   if (copy_filter_sum > 63*2)
-    w5 = std::min<u8>(copy_filter_sum - 63 * 2, 63);
+  CopyFilterCoefficients coef;
+  coef.Low = BPMEM_COPYFILTER0 << 24;
+  coef.High = BPMEM_COPYFILTER1 << 24;
 
-  u32 copy_filter_reg_0 = u32(w3) << 12 | u32(w4) << 18;
-  u32 copy_filter_reg_1 = u32(w5);
+  coef.w3 = std::min<u8>(copy_filter_sum, 63);
+  if (copy_filter_sum > 63)
+    coef.w2 = std::min<u8>(copy_filter_sum - 63, 63);
+  if (copy_filter_sum > 63*2)
+    coef.w4 = std::min<u8>(copy_filter_sum - 63 * 2, 63);
 
-  CGX_LOAD_BP_REG(BPMEM_COPYFILTER0 << 24 | copy_filter_reg_0);
-  CGX_LOAD_BP_REG(BPMEM_COPYFILTER1 << 24 | copy_filter_reg_1);
+  CGX_LOAD_BP_REG(coef.Low);
+  CGX_LOAD_BP_REG(coef.High);
 }
 
-GXTest::Vec4<u8> PredictEfbColor(u8 x, PixelFormat pixel_fmt, bool efb_peek = false)
+u8 SixBit(u8 value)
 {
-  const u8 sixbit = static_cast<u8>((x & 0xfc) | ((x & 0xc0) >> 6));
-  const u8 fivebit = static_cast<u8>((x & 0xf8) | ((x & 0xe0) >> 5));
+  return (value & 0xfc) | ((value & 0xc0) >> 6);
+}
+
+u8 FiveBit(u8 value)
+{
+  return (value & 0xf8) | ((value & 0xe0) >> 5);
+}
+
+u8 Y8Transform(u8 value)
+{
+  if (value <= 1)
+    return 0;
+  else
+    return 255;
+}
+
+u8 U8Transform(u8 value)
+{
+  if (value <= 1)
+  {
+    return 0;
+  }
+  else if (value & 1)
+  {
+    return 255;
+  }
+  else
+  {
+    /*
+    switch (value & 0xc0)
+    {
+    case 0x00: return (value & 2) ? 44 : 12;
+    case 0x40: return (value & 2) ? 109 : 77;
+    case 0x80: return (value & 2) ? 174 : 142;
+    case 0xc0: return (value & 2) ? 239 : 207;
+    }
+    */
+    return 12 + 65 * ((value & 0xc0) >> 6) + 32 * ((value & 2) >> 1);
+  }
+}
+
+u8 V8Transform(u8 value)
+{
+  if (value & 1)
+    return value;
+  else
+    return FiveBit(value);
+}
+
+GXTest::Vec4<u8> PredictEfbColor(u16 x, u16 y, PixelFormat pixel_fmt, bool efb_peek = false)
+{
+  GXTest::Vec4<u8> color = GenerateEFBColor(x, y);
   switch (pixel_fmt)
   {
   case PixelFormat::RGB8_Z24:
   //case PixelFormat::Y8:
   case PixelFormat::YUV420:
   default:
-    return {x, x, x, 255};
+    return {color.r, color.g, color.b, 255};
   case PixelFormat::RGBA6_Z24:
-    return {sixbit, sixbit, sixbit, sixbit};
+    return {SixBit(color.r), SixBit(color.g), SixBit(color.b), SixBit(color.a)};
   case PixelFormat::RGB565_Z16:
     // Does not work
-    return {fivebit, sixbit, fivebit, 255};
+    return {FiveBit(color.r), SixBit(color.g), SixBit(color.a), 255};
   case PixelFormat::Y8:
-    // This gives correct results for texture copies...
     if (!efb_peek)
     {
-      return {x, x, x, 255};
+      // This gives correct results for texture copies...
+      return {color.r, color.g, color.b, 255};
     }
     else
     {
       // But this is the logic behind peeks?
-      if (x <= 1)
-        return {0, 0, 0, 255};
-      else
-        return {255, 255, 255, 255};
+      return {Y8Transform(color.r), Y8Transform(color.g), Y8Transform(color.b), 255};
     }
   case PixelFormat::U8:
     if (efb_peek)
     {
       // This only works for EFB peeks
-      if (x <= 1)
-        return {0, 0, 0, 255};
-      else if (x & 1)
-        return {255, 255, 255, 255};
-      else
-      {
-        /*
-        switch (x & 0xc0)
-        {
-        case 0x00: return (x & 2) ? 44 : 12;
-        case 0x40: return (x & 2) ? 109 : 77;
-        case 0x80: return (x & 2) ? 174 : 142;
-        case 0xc0: return (x & 2) ? 239 : 207;
-        }
-        */
-        u8 value = 12 + 65 * ((x & 0xc0) >> 6) + 32 * ((x & 2) >> 1);
-        return {value, value, value, 255};
-      }
+      return {U8Transform(color.r), U8Transform(color.g), U8Transform(color.b), 255};
     }
     else
     {
@@ -183,10 +221,7 @@ GXTest::Vec4<u8> PredictEfbColor(u8 x, PixelFormat pixel_fmt, bool efb_peek = fa
     }
   case PixelFormat::V8:
     // This works but makes no sense
-    if (x & 1)
-      return {x, x, x, 255};
-    else
-      return {fivebit, fivebit, fivebit, 255};
+    return {V8Transform(color.r), V8Transform(color.g), V8Transform(color.b), 255};
   case PixelFormat::Z24:
     // Does not work
     return {0x12, 0x34, 0x56, 255};
@@ -254,10 +289,10 @@ void CopyFilterTest(const CopyFilterTestContext& ctx)
   GXTest::CopyToTestBuffer(0, 0, 255, 2, {.gamma = ctx.gamma, .intensity_fmt = ctx.intensity_fmt, .auto_conv = ctx.intensity_fmt});
   CGX_WaitForGpuToFinish();
 
-  for (u32 x = 0; x < 256; x++)
+  for (u16 x = 0; x < 256; x++)
   {
     // Reduce bit depth based on the format
-    GXTest::Vec4<u8> efb_color = PredictEfbColor(static_cast<u8>(x), ctx.pixel_fmt);
+    GXTest::Vec4<u8> efb_color = PredictEfbColor(x, 1, ctx.pixel_fmt);
     // Make predictions based on the copy filter and gamma
     GXTest::Vec4<u8> expected = Predict(efb_color, ctx);
     GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
@@ -282,25 +317,31 @@ void CheckEFB(PixelFormat pixel_fmt)
   {
     for (u16 x = 0; x < 256; x++)
     {
-      GXColor actual;
-      GX_PeekARGB(x, 1, &actual);
-      GXTest::Vec4<u8> expected = PredictEfbColor(static_cast<u8>(x), pixel_fmt, true);
+      for (u16 y = 0; y < 3; y++)
+      {
+        GXColor actual;
+        GX_PeekARGB(x, y, &actual);
+        GXTest::Vec4<u8> expected = PredictEfbColor(x, y, pixel_fmt, true);
 
-      DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.r, actual.r);
-      DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.g, actual.g);
-      DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.b, actual.b);
-      DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.a, actual.a);
+        DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} y {} pixel format {} using peeks: expected {}, was {}", x, y, pixel_fmt, expected.r, actual.r);
+        DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} y {} pixel format {} using peeks: expected {}, was {}", x, y, pixel_fmt, expected.g, actual.g);
+        DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} y {} pixel format {} using peeks: expected {}, was {}", x, y, pixel_fmt, expected.b, actual.b);
+        DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} y {} pixel format {} using peeks: expected {}, was {}", x, y, pixel_fmt, expected.a, actual.a);
+      }
     }
   }
   else
   {
     for (u16 x = 0; x < 256; x++)
     {
-      u32 actual;
-      GX_PeekZ(x, 1, &actual);
-      u32 expected = 0x123456;
+      for (u16 y = 0; y < 3; y++)
+      {
+        u32 actual;
+        GX_PeekZ(x, y, &actual);
+        u32 expected = 0x123456;
 
-      DO_TEST(actual == expected, "Predicted wrong z value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected, actual);
+        DO_TEST(actual == expected, "Predicted wrong z value for x {} y {} pixel format {} using peeks: expected {}, was {}", x, y, pixel_fmt, expected, actual);
+      }
     }
   }
 
