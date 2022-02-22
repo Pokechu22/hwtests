@@ -238,10 +238,10 @@ void CopyFilterTest(PixelFormat pixel_fmt, u8 copy_filter_sum, GammaCorrection g
     // Make predictions based on the copy filter and gamma
     GXTest::Vec4<u8> expected = Predict(efb_color, copy_filter_sum, gamma, intensity);
     GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
-    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), intensity, expected.r, efb_color.r, actual.r);
-    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), intensity, expected.g, efb_color.g, actual.g);
-    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), intensity, expected.b, efb_color.b, actual.b);
-    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, u32(pixel_fmt), copy_filter_sum, u32(gamma), intensity, expected.a, efb_color.a, actual.a);
+    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.r, efb_color.r, actual.r);
+    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.g, efb_color.g, actual.g);
+    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.b, efb_color.b, actual.b);
+    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.a, efb_color.a, actual.a);
   }
 
   END_TEST();
@@ -263,10 +263,10 @@ void CheckEFB(PixelFormat pixel_fmt)
       GX_PeekARGB(x, 1, &actual);
       GXTest::Vec4<u8> expected = PredictEfbColor(static_cast<u8>(x), pixel_fmt, true);
 
-      DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} pixel format {} using peeks: expected {}, was {}", x, u32(pixel_fmt), expected.r, actual.r);
-      DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} pixel format {} using peeks: expected {}, was {}", x, u32(pixel_fmt), expected.g, actual.g);
-      DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} pixel format {} using peeks: expected {}, was {}", x, u32(pixel_fmt), expected.b, actual.b);
-      DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} pixel format {} using peeks: expected {}, was {}", x, u32(pixel_fmt), expected.a, actual.a);
+      DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.r, actual.r);
+      DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.g, actual.g);
+      DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.b, actual.b);
+      DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected.a, actual.a);
     }
   }
   else
@@ -277,7 +277,7 @@ void CheckEFB(PixelFormat pixel_fmt)
       GX_PeekZ(x, 1, &actual);
       u32 expected = 0x123456;
 
-      DO_TEST(actual == expected, "Predicted wrong z value for x {} pixel format {} using peeks: expected {}, was {}", x, u32(pixel_fmt), expected, actual);
+      DO_TEST(actual == expected, "Predicted wrong z value for x {} pixel format {} using peeks: expected {}, was {}", x, pixel_fmt, expected, actual);
     }
   }
 
