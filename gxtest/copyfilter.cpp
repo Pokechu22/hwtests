@@ -228,10 +228,12 @@ GXTest::Vec4<u8> PredictEfbColor(u16 x, u16 y, PixelFormat pixel_fmt, bool efb_p
   }
 }
 
-u8 Predict(u8 value, const CopyFilterTestContext& ctx)
+u8 Predict(u8 prev, u8 current, u8 next, const CopyFilterTestContext& ctx)
 {
   // Apply copy filter
-  u32 prediction_i = static_cast<u32>(value) * static_cast<u32>(ctx.copy_filter_sum);
+  u32 prediction_i = static_cast<u32>(prev) * static_cast<u32>(ctx.prev_copy_filter_sum);
+  prediction_i += static_cast<u32>(current) * static_cast<u32>(ctx.copy_filter_sum);
+  prediction_i += static_cast<u32>(next) * static_cast<u32>(ctx.next_copy_filter_sum);
   prediction_i >>= 6;  // Divide by 64
   // The clamping seems to happen in the range[0, 511]; if the value is outside
   // an overflow will still occur.  This happens if copy_filter_sum >= 128.
@@ -262,11 +264,11 @@ u8 Predict(u8 value, const CopyFilterTestContext& ctx)
   return static_cast<u8>(prediction_i);
 }
 
-GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, const CopyFilterTestContext& ctx)
+GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> prev_efb_color, GXTest::Vec4<u8> efb_color, GXTest::Vec4<u8> next_efb_color, const CopyFilterTestContext& ctx)
 {
-  const u8 r = Predict(efb_color.r, ctx);
-  const u8 g = Predict(efb_color.g, ctx);
-  const u8 b = Predict(efb_color.b, ctx);
+  const u8 r = Predict(prev_efb_color.r, efb_color.r, next_efb_color.r, ctx);
+  const u8 g = Predict(prev_efb_color.g, efb_color.g, next_efb_color.g, ctx);
+  const u8 b = Predict(prev_efb_color.b, efb_color.b, next_efb_color.b, ctx);
   const u8 a = efb_color.a;  // Copy filter doesn't apply to alpha
   if (ctx.intensity_fmt)
   {
@@ -292,14 +294,16 @@ void CopyFilterTest(const CopyFilterTestContext& ctx)
   for (u16 x = 0; x < 256; x++)
   {
     // Reduce bit depth based on the format
+    GXTest::Vec4<u8> prev_efb_color = PredictEfbColor(x, 0, ctx.pixel_fmt);
     GXTest::Vec4<u8> efb_color = PredictEfbColor(x, 1, ctx.pixel_fmt);
+    GXTest::Vec4<u8> next_efb_color = PredictEfbColor(x, 2, ctx.pixel_fmt);
     // Make predictions based on the copy filter and gamma
-    GXTest::Vec4<u8> expected = Predict(efb_color, ctx);
+    GXTest::Vec4<u8> expected = Predict(prev_efb_color, efb_color, next_efb_color, ctx);
     GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
-    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.r, efb_color.r, actual.r);
-    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.g, efb_color.g, actual.g);
-    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.b, efb_color.b, actual.b);
-    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.a, efb_color.a, actual.a);
+    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} with {}: expected {} from {}/{}/{}, was {}", x, ctx, expected.r, prev_efb_color.r, efb_color.r, next_efb_color.r, actual.r);
+    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} with {}: expected {} from {}/{}/{}, was {}", x, ctx, expected.g, prev_efb_color.g, efb_color.g, next_efb_color.g, actual.g);
+    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} with {}: expected {} from {}/{}/{}, was {}", x, ctx, expected.b, prev_efb_color.b, efb_color.b, next_efb_color.b, actual.b);
+    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} with {}: expected {} from {}/{}/{}, was {}", x, ctx, expected.a, prev_efb_color.a, efb_color.a, next_efb_color.a, actual.a);
   }
 
   END_TEST();
