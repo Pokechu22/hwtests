@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <fmt/format.h>
 
 #include <ogcsys.h>
 #include <wiiuse/wpad.h>
@@ -18,6 +19,29 @@
 #define FULL_GAMMA true
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
+
+struct CopyFilterTestContext
+{
+  PixelFormat pixel_fmt;
+  GammaCorrection gamma;
+  u8 prev_copy_filter_sum;
+  u8 copy_filter_sum;
+  u8 next_copy_filter_sum;
+  bool intensity_fmt;
+};
+template <>
+struct fmt::formatter<CopyFilterTestContext>
+{
+  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+  template <typename FormatContext>
+  auto format(const CopyFilterTestContext& test, FormatContext& ctx) const
+  {
+    return fmt::format_to(ctx.out(),
+                          "pixel_fmt: {}, gamma: {}, copy filter: {}/{}/{}, intensity: {}",
+                          test.pixel_fmt, test.gamma, test.prev_copy_filter_sum,
+                          test.copy_filter_sum, test.next_copy_filter_sum, test.intensity_fmt);
+  }
+};
 
 static void FillEFB(PixelFormat pixel_fmt)
 {
@@ -84,13 +108,12 @@ void SetCopyFilter(u8 copy_filter_sum)
   // all apply to the current row of pixels.  This means that up to 63*3
   // can be used for the current row.
   // We currently ignore the case of copy_filter_sum >= MAX_COPY_FILTER.
-
   u8 w4 = std::min<u8>(copy_filter_sum, 63);
   u8 w3 = 0;
-  if (copy_filter_sum > 63)
+   if (copy_filter_sum > 63)
     w3 = std::min<u8>(copy_filter_sum - 63, 63);
   u8 w5 = 0;
-  if (copy_filter_sum > 63*2)
+   if (copy_filter_sum > 63*2)
     w5 = std::min<u8>(copy_filter_sum - 63 * 2, 63);
 
   u32 copy_filter_reg_0 = u32(w3) << 12 | u32(w4) << 18;
@@ -170,21 +193,21 @@ GXTest::Vec4<u8> PredictEfbColor(u8 x, PixelFormat pixel_fmt, bool efb_peek = fa
   }
 }
 
-u8 Predict(u8 value, u8 copy_filter_sum, GammaCorrection gamma)
+u8 Predict(u8 value, const CopyFilterTestContext& ctx)
 {
   // Apply copy filter
-  u32 prediction_i = static_cast<u32>(value) * static_cast<u32>(copy_filter_sum);
+  u32 prediction_i = static_cast<u32>(value) * static_cast<u32>(ctx.copy_filter_sum);
   prediction_i >>= 6;  // Divide by 64
   // The clamping seems to happen in the range[0, 511]; if the value is outside
   // an overflow will still occur.  This happens if copy_filter_sum >= 128.
   prediction_i &= 0x1ffu;
   prediction_i = std::min(prediction_i, 0xffu);
   // Apply gamma
-  if (gamma != GammaCorrection::Gamma1_0)
+  if (ctx.gamma != GammaCorrection::Gamma1_0)
   {
     // Convert from [0-255] to [0-1]
     float prediction_f = static_cast<float>(prediction_i) / 255.f;
-    switch (gamma)
+    switch (ctx.gamma)
     {
     case GammaCorrection::Gamma1_7:
       prediction_f = std::pow(prediction_f, 1 / 1.7f);
@@ -204,13 +227,13 @@ u8 Predict(u8 value, u8 copy_filter_sum, GammaCorrection gamma)
   return static_cast<u8>(prediction_i);
 }
 
-GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, u8 copy_filter_sum, GammaCorrection gamma, bool intensity)
+GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, const CopyFilterTestContext& ctx)
 {
-  const u8 r = Predict(efb_color.r, copy_filter_sum, gamma);
-  const u8 g = Predict(efb_color.g, copy_filter_sum, gamma);
-  const u8 b = Predict(efb_color.b, copy_filter_sum, gamma);
+  const u8 r = Predict(efb_color.r, ctx);
+  const u8 g = Predict(efb_color.g, ctx);
+  const u8 b = Predict(efb_color.b, ctx);
   const u8 a = efb_color.a;  // Copy filter doesn't apply to alpha
-  if (intensity)
+  if (ctx.intensity_fmt)
   {
     // BT.601 conversion
     const u8 y = static_cast<u8>(std::round(( 66 * r + 129 * g +  25 * b) / 256.0 + 16));
@@ -224,24 +247,24 @@ GXTest::Vec4<u8> Predict(GXTest::Vec4<u8> efb_color, u8 copy_filter_sum, GammaCo
   }
 }
 
-void CopyFilterTest(PixelFormat pixel_fmt, u8 copy_filter_sum, GammaCorrection gamma, bool intensity)
+void CopyFilterTest(const CopyFilterTestContext& ctx)
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 2, {.gamma = gamma, .intensity_fmt = intensity, .auto_conv = intensity});
+  GXTest::CopyToTestBuffer(0, 0, 255, 2, {.gamma = ctx.gamma, .intensity_fmt = ctx.intensity_fmt, .auto_conv = ctx.intensity_fmt});
   CGX_WaitForGpuToFinish();
 
   for (u32 x = 0; x < 256; x++)
   {
     // Reduce bit depth based on the format
-    GXTest::Vec4<u8> efb_color = PredictEfbColor(static_cast<u8>(x), pixel_fmt);
+    GXTest::Vec4<u8> efb_color = PredictEfbColor(static_cast<u8>(x), ctx.pixel_fmt);
     // Make predictions based on the copy filter and gamma
-    GXTest::Vec4<u8> expected = Predict(efb_color, copy_filter_sum, gamma, intensity);
+    GXTest::Vec4<u8> expected = Predict(efb_color, ctx);
     GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, 1, 256);
-    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.r, efb_color.r, actual.r);
-    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.g, efb_color.g, actual.g);
-    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.b, efb_color.b, actual.b);
-    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} pixel format {} copy filter {} gamma {} intensity {}: expected {} from {}, was {}", x, pixel_fmt, copy_filter_sum, gamma, intensity, expected.a, efb_color.a, actual.a);
+    DO_TEST(actual.r == expected.r, "Predicted wrong red   value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.r, efb_color.r, actual.r);
+    DO_TEST(actual.g == expected.g, "Predicted wrong green value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.g, efb_color.g, actual.g);
+    DO_TEST(actual.b == expected.b, "Predicted wrong blue  value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.b, efb_color.b, actual.b);
+    DO_TEST(actual.a == expected.a, "Predicted wrong alpha value for x {} with {}: expected {} from {}, was {}", x, ctx, expected.a, efb_color.a, actual.a);
   }
 
   END_TEST();
@@ -308,8 +331,8 @@ int main()
       SetCopyFilter(copy_filter_sum);
       for (GammaCorrection gamma : GAMMA_VALUES)
       {
-        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, false);
-        CopyFilterTest(pixel_fmt, copy_filter_sum, gamma, true);
+        CopyFilterTest({pixel_fmt, gamma, 0, copy_filter_sum, 0, false});
+        CopyFilterTest({pixel_fmt, gamma, 0, copy_filter_sum, 0, true});
 
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)
