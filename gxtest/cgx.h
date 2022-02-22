@@ -70,7 +70,7 @@ struct EFBCopyParams
   EFBCopyFormat format = EFBCopyFormat::RGBA8;
   bool clamp_top = true;
   bool clamp_bottom = true;
-  bool yuv = false;
+  bool unknown_bit = false;
   GammaCorrection gamma = GammaCorrection::Gamma1_0;
   bool half_scale = false;
   bool scale_invert = false;

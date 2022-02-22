@@ -51,11 +51,11 @@ GXTest::Vec4<u8> GetIntensityColor(u8 r, u8 g, u8 b, u8 a)
   return { y, u, v, a };
 }
 
-void IntensityTest(u8 blue, bool yuv, bool intensity_fmt, bool auto_conv)
+void IntensityTest(u8 blue, bool unknown_yuv, bool intensity_fmt, bool auto_conv)
 {
   START_TEST();
 
-  GXTest::CopyToTestBuffer(0, 0, 255, 255, {.yuv = yuv, .intensity_fmt = intensity_fmt, .auto_conv = auto_conv});
+  GXTest::CopyToTestBuffer(0, 0, 255, 255, {.unknown_bit = unknown_yuv, .intensity_fmt = intensity_fmt, .auto_conv = auto_conv});
   CGX_WaitForGpuToFinish();
 
   for (u32 x = 0; x < 256; x++)
@@ -65,10 +65,10 @@ void IntensityTest(u8 blue, bool yuv, bool intensity_fmt, bool auto_conv)
       GXTest::Vec4<u8> actual = GXTest::ReadTestBuffer(x, y, 256);
       bool actually_is_intensity = intensity_fmt && auto_conv;
       GXTest::Vec4<u8> expected = actually_is_intensity ? GetIntensityColor(x, y, blue, 255) : GXTest::Vec4<u8>{static_cast<u8>(x), static_cast<u8>(y), blue, 255};
-      DO_TEST(actual.r == expected.r, "Got wrong red   / y value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.r, actual.r);
-      DO_TEST(actual.g == expected.g, "Got wrong green / u value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.g, actual.g);
-      DO_TEST(actual.b == expected.b, "Got wrong blue  / v value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.b, actual.b);
-      DO_TEST(actual.a == expected.a, "Got wrong alpha     value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, yuv, intensity_fmt, auto_conv, expected.a, actual.a);
+      DO_TEST(actual.r == expected.r, "Got wrong red   / y value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, unknown_yuv, intensity_fmt, auto_conv, expected.r, actual.r);
+      DO_TEST(actual.g == expected.g, "Got wrong green / u value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, unknown_yuv, intensity_fmt, auto_conv, expected.g, actual.g);
+      DO_TEST(actual.b == expected.b, "Got wrong blue  / v value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, unknown_yuv, intensity_fmt, auto_conv, expected.b, actual.b);
+      DO_TEST(actual.a == expected.a, "Got wrong alpha     value for x {} y {} blue {}, {} {} {}: expected {}, was {}", x, y, blue, unknown_yuv, intensity_fmt, auto_conv, expected.a, actual.a);
     }
   }
 
@@ -87,10 +87,12 @@ int main()
     FillEFB(blue);
     for (u32 counter = 0; counter < 8; counter++)
     {
-      const bool yuv = (counter & 1);
+      // The bit corresponding to unknown_yuv was renamed to "yuv" in Dolphin commit
+      // 522746b2c223f37c45569ee7fd4a226b278cb6d9.  It's not clear why, and seems to do nothing.
+      const bool unknown_yuv = (counter & 1);
       const bool intensity_fmt = (counter & 2);
       const bool auto_conv = (counter & 4);
-      IntensityTest(blue, yuv, intensity_fmt, auto_conv);
+      IntensityTest(blue, unknown_yuv, intensity_fmt, auto_conv);
 
       WPAD_ScanPads();
       if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME)

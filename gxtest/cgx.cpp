@@ -159,7 +159,7 @@ void CGX_DoEfbCopyTex(u16 left, u16 top, u16 width, u16 height, void* dest, cons
   reg.SetRealFormat(params.format);
   reg.clamp_top = params.clamp_top;
   reg.clamp_bottom = params.clamp_bottom;
-  reg.yuv = params.yuv;
+  reg.unknown_bit = params.unknown_bit;
   reg.gamma = params.gamma;
   reg.half_scale = params.half_scale;
   reg.scale_invert = params.scale_invert;
