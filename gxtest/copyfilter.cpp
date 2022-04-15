@@ -45,6 +45,8 @@ struct fmt::formatter<CopyFilterTestContext>
   }
 };
 
+void SetCopyFilter(u8 prev_copy_filter_sum, u8 copy_filter_sum, u8 next_copy_filter_sum);
+
 GXTest::Vec4<u8> GenerateEFBColor(u16 x, u16 y)
 {
   const u8 r = static_cast<u8>(x);
@@ -53,28 +55,32 @@ GXTest::Vec4<u8> GenerateEFBColor(u16 x, u16 y)
   const u8 a = static_cast<u8>(x);
   return {r, g, b, a};
 }
-u32 GenerateEFBDepth([[maybe_unused]] u16 x, u16 y)
+
+static u32 GenerateEFBDepth(u16 x, u16 y)
 {
-  return y < 4 ? 0x123456 : 0x789abc;
+  auto color = GenerateEFBColor(x, y);
+  return (u32(color.r) << 16) | (u32(color.g) << 8) | color.b;
 }
 
-static void FillEFB(PixelFormat pixel_fmt)
+static void SetPixelFormat(PixelFormat pixel_fmt)
 {
-  PEControl ctrl;
-  ctrl.hex = BPMEM_ZCOMPARE << 24;
+  PEControl ctrl{.hex = BPMEM_ZCOMPARE << 24};
   ctrl.pixel_format = pixel_fmt;
   ctrl.zformat = DepthFormat::ZLINEAR;
   ctrl.early_ztest = false;
   CGX_LOAD_BP_REG(ctrl.hex);
-  CGX_WaitForGpuToFinish();
+}
 
-  // Needed for clear to work properly. GX_CopyTex ors with 0xf, but the top bit indicating update also must be set
-  CGX_LOAD_BP_REG(BPMEM_ZMODE << 24 | 0x1f);
-  CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x123456);
-  // For some reason, Z isn't cleared properly if the height isn't set to 4 (3 inclusive)
-  GXTest::CopyToTestBuffer(0, 0, 255, 3, {.clear = true});
-  CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x789abc);
-  GXTest::CopyToTestBuffer(0, 4, 255, 7, {.clear = true});
+static void FillEFB(PixelFormat pixel_fmt)
+{
+  // Don't set the format to Z24 here since we need RGB8 for our EFB copy+z-texture hack below
+  SetPixelFormat(pixel_fmt == PixelFormat::Z24 ? PixelFormat::RGB8_Z24 : pixel_fmt);
+
+  ZMode zmode{.hex = BPMEM_ZMODE << 24};
+  zmode.testenable = true;
+  zmode.func = CompareMode::Always;
+  zmode.updateenable = true;
+  CGX_LOAD_BP_REG(zmode.hex);
   CGX_WaitForGpuToFinish();
 
   CGX_PEPokeDither(false);
@@ -97,6 +103,65 @@ static void FillEFB(PixelFormat pixel_fmt)
       // CGX_PokeZ(x, y, GenerateEFBDepth(x, y), pixel_fmt);
     }
   }
+
+  if (pixel_fmt == PixelFormat::Z24)
+  {
+    // HACK: Since GX_PokeZ doesn't seem to work, we instead use an EFB copy and then
+    // draw over it using the z-texture feature to set the depth buffer.
+    SetCopyFilter(0, 64, 0);
+    GXTest::CopyToTestBuffer(0, 0, 255, 7, {.clear = true});
+
+    CGX_LOAD_BP_REG(BPMEM_TX_SETMODE0 << 24);
+    CGX_LOAD_BP_REG(BPMEM_TX_SETMODE1 << 24);
+    TexImage0 ti0{.hex = BPMEM_TX_SETIMAGE0 << 24};
+    ti0.width = 255;
+    ti0.height = 7;
+    ti0.format = TextureFormat::RGBA8;
+    CGX_LOAD_BP_REG(ti0.hex);
+    // Assume that TexImage1 and TexImage2 (tmem-related)
+    // are set properly by libogc's init
+    TexImage3 ti3{.hex = BPMEM_TX_SETIMAGE3 << 24};
+    ti3.image_base = MEM_VIRTUAL_TO_PHYSICAL(GXTest::test_buffer);
+    CGX_LOAD_BP_REG(ti3.hex);
+
+    CGX_LOAD_BP_REG(BPMEM_BIAS << 24);  // ztex bias is 0
+    ZTex2 ztex2{.hex = BPMEM_ZTEX2 << 24};
+    ztex2.type = ZTexFormat::U24;
+    ztex2.op = ZTexOp::Replace;
+    CGX_LOAD_BP_REG(ztex2.hex);
+
+    TwoTevStageOrders tref{.hex = BPMEM_TREF << 24};
+    tref.texmap0 = 0;
+    tref.texcoord0 = 0;
+    tref.enable0 = true;
+    // We don't actually care about what color the TEV produces here, so
+    // we don't configure that specifically.
+    CGX_SetViewport(0.0f, 0.0f, 256.0f, 8.0f, 0.0f, 1.0f);
+    // Set the vertex format...
+    CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
+    CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
+    UVAT_group0 vat0{.Hex = 0};
+    vat0.PosElements = VA_TYPE_POS_XY;
+    vat0.PosFormat = VA_FMT_S8;
+    vat0.Tex0CoordElements = VA_TYPE_TEX_ST;
+    vat0.Tex0CoordFormat = VA_FMT_U8;
+    CGX_LOAD_CP_REG(0x70, vat0.Hex);
+    CGX_LOAD_CP_REG(0x80, 0x80000000);  // CP_VAT_REG_B: vcache enhance only
+    CGX_LOAD_CP_REG(0x90, 0);  // CP_VAT_REG_C
+
+    wgPipe->U8 = 0x80;  // GX_DRAW_QUADS
+    wgPipe->U16 = 4;  // 4 vertices
+    wgPipe->U32 = 0xff'ff'00'00;  // (-1, -1) / (0, 0)
+    wgPipe->U32 = 0xff'01'00'01;  // (-1, +1) / (0, 1)
+    wgPipe->U32 = 0x01'01'01'01;  // (+1, +1) / (1, 1)
+    wgPipe->U32 = 0x01'ff'01'00;  // (+1, -1) / (1, 0)
+
+    SetPixelFormat(pixel_fmt);
+
+    CGX_WaitForGpuToFinish();
+    for (int i = 0; i < 600; i++)
+      GXTest::DebugDisplayEfbContents();
+  }
 }
 
 #if FULL_GAMMA
@@ -109,7 +174,8 @@ static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Ga
 static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
 // These formats work on Dolphin and on real hardware
-static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
+//static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
+static const std::array<PixelFormat, 1> PIXEL_FORMATS = { PixelFormat::Z24 };
 #endif
 
 // Applies to current row
@@ -117,6 +183,11 @@ static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24,
 #define MAX_COPY_FILTER_PREV 63*2
 #define MAX_COPY_FILTER_NEXT 63*2
 void SetCopyFilter(const CopyFilterTestContext& ctx)
+{
+  SetCopyFilter(ctx.prev_copy_filter_sum, ctx.copy_filter_sum, ctx.next_copy_filter_sum);
+}
+
+void SetCopyFilter(u8 prev_copy_filter_sum, u8 copy_filter_sum, u8 next_copy_filter_sum)
 {
   // Each field in the copy filter ranges from 0-63, and the middle 3 values
   // all apply to the current row of pixels.  This means that up to 63*3
@@ -127,19 +198,19 @@ void SetCopyFilter(const CopyFilterTestContext& ctx)
   coef.High = BPMEM_COPYFILTER1 << 24;
 
   // Previous row (w0, w1)
-  coef.w0 = std::min<u8>(ctx.prev_copy_filter_sum, 63);
-  if (ctx.prev_copy_filter_sum > 63)
-    coef.w1 = std::min<u8>(ctx.prev_copy_filter_sum - 63, 63);
+  coef.w0 = std::min<u8>(prev_copy_filter_sum, 63);
+  if (prev_copy_filter_sum > 63)
+    coef.w1 = std::min<u8>(prev_copy_filter_sum - 63, 63);
   // Current row (w2, w3, w4)
-  coef.w3 = std::min<u8>(ctx.copy_filter_sum, 63);
-  if (ctx.copy_filter_sum > 63)
-    coef.w2 = std::min<u8>(ctx.copy_filter_sum - 63, 63);
-  if (ctx.copy_filter_sum > 63 * 2)
-    coef.w4 = std::min<u8>(ctx.copy_filter_sum - 63 * 2, 63);
+  coef.w3 = std::min<u8>(copy_filter_sum, 63);
+  if (copy_filter_sum > 63)
+    coef.w2 = std::min<u8>(copy_filter_sum - 63, 63);
+  if (copy_filter_sum > 63 * 2)
+    coef.w4 = std::min<u8>(copy_filter_sum - 63 * 2, 63);
   // Next row (w5, w6)
-  coef.w5 = std::min<u8>(ctx.next_copy_filter_sum, 63);
-  if (ctx.next_copy_filter_sum > 63)
-    coef.w6 = std::min<u8>(ctx.next_copy_filter_sum - 63, 63);
+  coef.w5 = std::min<u8>(next_copy_filter_sum, 63);
+  if (next_copy_filter_sum > 63)
+    coef.w6 = std::min<u8>(next_copy_filter_sum - 63, 63);
 
   CGX_LOAD_BP_REG(coef.Low);
   CGX_LOAD_BP_REG(coef.High);
@@ -373,19 +444,19 @@ void CheckEFB(PixelFormat pixel_fmt)
 
 int main()
 {
-  network_init();
+  //network_init();
   WPAD_Init();
 
   GXTest::Init();
-  network_printf("FULL_COPY_FILTER_COEFS: %s\n", FULL_COPY_FILTER_COEFS ? "true" : "false");
-  network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
-  network_printf("FULL_PIXEL_FORMATS: %s\n", FULL_PIXEL_FORMATS ? "true" : "false");
+  //network_printf("FULL_COPY_FILTER_COEFS: %s\n", FULL_COPY_FILTER_COEFS ? "true" : "false");
+  //network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
+  //network_printf("FULL_PIXEL_FORMATS: %s\n", FULL_PIXEL_FORMATS ? "true" : "false");
 
   for (PixelFormat pixel_fmt : PIXEL_FORMATS)
   {
     FillEFB(pixel_fmt);
+break;
     CheckEFB(pixel_fmt);
-
 #if FULL_COPY_FILTER_COEFS
     for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER_CUR; copy_filter_sum++)
 #else
@@ -423,9 +494,9 @@ int main()
   }
 done:
 
-  report_test_results();
-  network_printf("Shutting down...\n");
-  network_shutdown();
+  //report_test_results();
+  //network_printf("Shutting down...\n");
+  //network_shutdown();
 
   return 0;
 }
