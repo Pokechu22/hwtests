@@ -109,7 +109,7 @@ struct fmt::formatter<EFBCopyFormat> : EnumFormatter<EFBCopyFormat::GB8>
 
 #pragma pack(4)
 
-enum
+enum : u32
 {
   BPMEM_GENMODE = 0x00,
   BPMEM_DISPLAYCOPYFILTER = 0x01,  // 0x01 + 4
