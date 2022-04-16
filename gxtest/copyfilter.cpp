@@ -14,13 +14,13 @@
 #include "gxtest/util.h"
 
 // Use all copy filter values (0-63*3), instead of only 64
-#define FULL_COPY_FILTER_COEFS true
+#define FULL_COPY_FILTER_COEFS false
 // Use all gamma values, instead of just 1.0 (0)
-#define FULL_GAMMA true
+#define FULL_GAMMA false
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
 // Also set the copy filter values for prev and next rows
-#define CHECK_PREV_AND_NEXT true
+#define CHECK_PREV_AND_NEXT false
 
 struct CopyFilterTestContext
 {
@@ -67,7 +67,7 @@ static void SetPixelFormat(PixelFormat pixel_fmt)
   PEControl ctrl{.hex = BPMEM_ZCOMPARE << 24};
   ctrl.pixel_format = pixel_fmt;
   ctrl.zformat = DepthFormat::ZLINEAR;
-  ctrl.early_ztest = false;
+  ctrl.early_ztest = true;
   CGX_LOAD_BP_REG(ctrl.hex);
 }
 
@@ -112,7 +112,14 @@ static void FillEFB(PixelFormat pixel_fmt)
     // value from clearing here without updating based on the z-texture
     // (or the depth of the quad I draw)
     SetCopyFilter(0, 64, 0);
+    CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 42);
     GXTest::CopyToTestBuffer(0, 0, 255, 7, {.clear = true});
+
+    AlphaTest alpha{.hex = BPMEM_ALPHACOMPARE << 24};
+    alpha.comp0 = CompareMode::Always;
+    alpha.comp1 = CompareMode::Always;
+    alpha.logic = AlphaTestOp::Or;
+    CGX_LOAD_BP_REG(alpha.hex);
 
     GenMode genmode{.hex = BPMEM_GENMODE << 24};
     genmode.numtexgens = 1;
@@ -141,11 +148,13 @@ static void FillEFB(PixelFormat pixel_fmt)
     ti3.image_base = MEM_VIRTUAL_TO_PHYSICAL(GXTest::test_buffer) >> 5;
     CGX_LOAD_BP_REG(ti3.hex);
 
+    /*
     CGX_LOAD_BP_REG(BPMEM_BIAS << 24);  // ztex bias is 0
     ZTex2 ztex2{.hex = BPMEM_ZTEX2 << 24};
     ztex2.type = ZTexFormat::U24;
     ztex2.op = ZTexOp::Replace;
     CGX_LOAD_BP_REG(ztex2.hex);
+    */
 
     TwoTevStageOrders tref{.hex = BPMEM_TREF << 24};
     tref.texmap0 = 0;
@@ -160,8 +169,9 @@ static void FillEFB(PixelFormat pixel_fmt)
     tc_t.scale_minus_1 = 8 - 1;
     CGX_LOAD_BP_REG(tc_t.hex);
 
-    // We don't actually care about what color the TEV produces here, so
-    // we don't configure that specifically.
+    auto tev = CGXDefault<TevStageCombiner::ColorCombiner>(0);
+    tev.d = TevColorArg::One;
+    CGX_LOAD_BP_REG(tev.hex);
 
     CGX_SetViewport(0.0f, 0.0f, 256.0f, 8.0f, 0.0f, 1.0f);
 
@@ -169,21 +179,23 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
     CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
     UVAT_group0 vat0{.Hex = 0};
-    vat0.PosElements = VA_TYPE_POS_XY;
+    vat0.PosElements = VA_TYPE_POS_XYZ;
     vat0.PosFormat = VA_FMT_S8;
     vat0.Tex0CoordElements = VA_TYPE_TEX_ST;
     vat0.Tex0CoordFormat = VA_FMT_U8;
-    CGX_LOAD_CP_REG(0x70, vat0.Hex);
+    CGX_LOAD_CP_REG(0x70, vat0.Hex | 0x40000000);
     CGX_LOAD_CP_REG(0x80, 0x80000000);  // CP_VAT_REG_B: vcache enhance only
     CGX_LOAD_CP_REG(0x90, 0);  // CP_VAT_REG_C
 
     // Actually draw the vertices
     wgPipe->U8 = 0x80;  // GX_DRAW_QUADS
     wgPipe->U16 = 4;  // 4 vertices
-    wgPipe->U32 = 0xff'ff'00'01;  // (-1, -1) / (0, 1)
-    wgPipe->U32 = 0xff'01'00'00;  // (-1, +1) / (0, 0)
-    wgPipe->U32 = 0x01'01'01'00;  // (+1, +1) / (1, 0)
-    wgPipe->U32 = 0x01'ff'01'01;  // (+1, -1) / (1, 1)
+    wgPipe->U32 = 0xff'ff'00'00; wgPipe->U8 = 0x01;  // (-1, -1, 0) / (0, 1)
+    wgPipe->U32 = 0xff'01'00'00; wgPipe->U8 = 0x00;  // (-1, +1, 0) / (0, 0)
+    wgPipe->U32 = 0x01'01'00'01; wgPipe->U8 = 0x00;  // (+1, +1, 0) / (1, 0)
+    wgPipe->U32 = 0x01'ff'00'01; wgPipe->U8 = 0x01;  // (+1, -1, 0) / (1, 1)
+
+    CGX_WaitForGpuToFinish();
 
     SetPixelFormat(pixel_fmt);
 
@@ -201,7 +213,8 @@ static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Ga
 static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
 // These formats work on Dolphin and on real hardware
-static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
+//static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
+static const std::array<PixelFormat, 1> PIXEL_FORMATS = { PixelFormat::Z24 };
 #endif
 
 // Applies to current row
@@ -482,6 +495,7 @@ int main()
   {
     FillEFB(pixel_fmt);
     CheckEFB(pixel_fmt);
+    break;
 #if FULL_COPY_FILTER_COEFS
     for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER_CUR; copy_filter_sum++)
 #else
