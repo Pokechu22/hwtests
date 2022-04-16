@@ -88,7 +88,7 @@ static void FillEFB(PixelFormat pixel_fmt)
   CGX_PEPokeColorUpdate(true);
   CGX_PEPokeBlendMode(GX_BM_NONE, SrcBlendFactor::Zero, DstBlendFactor::Zero, LogicOp::Set);
   CGX_PEPokeAlphaRead(GX_READ_NONE);
-  CGX_PEPokeZMode(false, CompareMode::Always, true);
+  CGX_PEPokeZMode(true, CompareMode::Always, true);
 
   // For some reason GX_PokeARGB hangs when using this format
   if (pixel_fmt == PixelFormat::RGB565_Z16)
@@ -98,7 +98,8 @@ static void FillEFB(PixelFormat pixel_fmt)
   {
     for (u16 y = 0; y < 8; y++)
     {
-      CGX_PokeARGB(x, y, GenerateEFBColor(x, y), pixel_fmt);
+      for (int y2 = 0; y2 < 80; y2++)
+      CGX_PokeARGB(x, y+8*y2, GenerateEFBColor(x, y), pixel_fmt);
       // GX_PokeZ doesn't seem to work at all
       // CGX_PokeZ(x, y, GenerateEFBDepth(x, y), pixel_fmt);
     }
@@ -112,10 +113,12 @@ static void FillEFB(PixelFormat pixel_fmt)
     // value from clearing here without updating based on the z-texture
     // (or the depth of the quad I draw)
     SetCopyFilter(0, 64, 0);
-    CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 42);
-    GXTest::CopyToTestBuffer(0, 0, 255, 7, {.clear = true});
-
-    AlphaTest alpha{.hex = BPMEM_ALPHACOMPARE << 24};
+    CGX_LOAD_BP_REG(BPMEM_CLEAR_AR << 24 | 0x00FF);
+    CGX_LOAD_BP_REG(BPMEM_CLEAR_GB << 24 | 0x00FF);
+    CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x420000);
+    GXTest::CopyToTestBuffer(0, 32, 255, 32+7, {.clear = true});
+for (int i = 0; i < 600; i++) {
+/*    AlphaTest alpha{.hex = BPMEM_ALPHACOMPARE << 24};
     alpha.comp0 = CompareMode::Always;
     alpha.comp1 = CompareMode::Always;
     alpha.logic = AlphaTestOp::Or;
@@ -125,6 +128,11 @@ static void FillEFB(PixelFormat pixel_fmt)
     genmode.numtexgens = 1;
     genmode.numtevstages = 1 - 1;
     CGX_LOAD_BP_REG(genmode.hex);
+
+    BlendMode blend{.hex = BPMEM_BLENDMODE << 24};
+    blend.colorupdate = true;
+    blend.alphaupdate = false;
+    CGX_LOAD_BP_REG(blend.hex);
 
     CGX_BEGIN_LOAD_XF_REGS(0x1008, 1);  // XFMEM_VTXSPECS
     wgPipe->U32 = 1<<4;  // 1 texture coordinate
@@ -147,7 +155,7 @@ static void FillEFB(PixelFormat pixel_fmt)
     TexImage3 ti3{.hex = BPMEM_TX_SETIMAGE3 << 24};
     ti3.image_base = MEM_VIRTUAL_TO_PHYSICAL(GXTest::test_buffer) >> 5;
     CGX_LOAD_BP_REG(ti3.hex);
-
+*/
     /*
     CGX_LOAD_BP_REG(BPMEM_BIAS << 24);  // ztex bias is 0
     ZTex2 ztex2{.hex = BPMEM_ZTEX2 << 24};
@@ -155,7 +163,7 @@ static void FillEFB(PixelFormat pixel_fmt)
     ztex2.op = ZTexOp::Replace;
     CGX_LOAD_BP_REG(ztex2.hex);
     */
-
+/*
     TwoTevStageOrders tref{.hex = BPMEM_TREF << 24};
     tref.texmap0 = 0;
     tref.texcoord0 = 0;
@@ -170,36 +178,52 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_BP_REG(tc_t.hex);
 
     auto tev = CGXDefault<TevStageCombiner::ColorCombiner>(0);
-    tev.d = TevColorArg::One;
+    tev.d = TevColorArg::TexColor;
     CGX_LOAD_BP_REG(tev.hex);
 
-    CGX_SetViewport(0.0f, 0.0f, 256.0f, 8.0f, 0.0f, 1.0f);
+    CGX_SetViewport(0.0f, 0.0f, 512.0f, 256.0f, 0.0f, 1.0f);
 
     // Set the vertex format...
     CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
     CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
     UVAT_group0 vat0{.Hex = 0};
-    vat0.PosElements = VA_TYPE_POS_XYZ;
-    vat0.PosFormat = VA_FMT_S8;
+    vat0.PosElements = VA_TYPE_POS_XY;
+    vat0.PosFormat = VA_FMT_F32;
     vat0.Tex0CoordElements = VA_TYPE_TEX_ST;
-    vat0.Tex0CoordFormat = VA_FMT_U8;
-    CGX_LOAD_CP_REG(0x70, vat0.Hex | 0x40000000);
+    vat0.Tex0CoordFormat = VA_FMT_F32;
+    CGX_LOAD_CP_REG(0x70, vat0.Hex);
     CGX_LOAD_CP_REG(0x80, 0x80000000);  // CP_VAT_REG_B: vcache enhance only
     CGX_LOAD_CP_REG(0x90, 0);  // CP_VAT_REG_C
 
     // Actually draw the vertices
-    wgPipe->U8 = 0x80;  // GX_DRAW_QUADS
-    wgPipe->U16 = 4;  // 4 vertices
-    wgPipe->U32 = 0xff'ff'01'00; wgPipe->U8 = 0x01;  // (-1, -1, 0) / (0, 1)
-    wgPipe->U32 = 0xff'01'01'00; wgPipe->U8 = 0x00;  // (-1, +1, 0) / (0, 0)
-    wgPipe->U32 = 0x01'01'01'01; wgPipe->U8 = 0x00;  // (+1, +1, 0) / (1, 0)
-    wgPipe->U32 = 0x01'ff'01'01; wgPipe->U8 = 0x01;  // (+1, -1, 0) / (1, 1)
+    GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
+    wgPipe->F32 = -1;
+    wgPipe->F32 = -1;
+    wgPipe->F32 = 0;
+    wgPipe->F32 = 1;
 
+    wgPipe->F32 = -1;
+    wgPipe->F32 = +1;
+    wgPipe->F32 = 0;
+    wgPipe->F32 = 0;
+
+    wgPipe->F32 = +1;
+    wgPipe->F32 = +1;
+    wgPipe->F32 = 1;
+    wgPipe->F32 = 0;
+
+    wgPipe->F32 = +1;
+    wgPipe->F32 = -1;
+    wgPipe->F32 = 1;
+    wgPipe->F32 = 1;
+    GX_End();
+*/
+  GXTest::Quad().ColorRGBA(0, 42, 42, 0).Draw();
     CGX_WaitForGpuToFinish();
 
+      GXTest::DebugDisplayEfbContents();
+}
     SetPixelFormat(pixel_fmt);
-
-    CGX_WaitForGpuToFinish();
   }
 }
 
