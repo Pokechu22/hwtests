@@ -118,7 +118,7 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x420000);
     GXTest::CopyToTestBuffer(0, 32, 255, 32+7, {.clear = true});
 for (int i = 0; i < 600; i++) {
-/*    AlphaTest alpha{.hex = BPMEM_ALPHACOMPARE << 24};
+    AlphaTest alpha{.hex = BPMEM_ALPHACOMPARE << 24};
     alpha.comp0 = CompareMode::Always;
     alpha.comp1 = CompareMode::Always;
     alpha.logic = AlphaTestOp::Or;
@@ -155,7 +155,7 @@ for (int i = 0; i < 600; i++) {
     TexImage3 ti3{.hex = BPMEM_TX_SETIMAGE3 << 24};
     ti3.image_base = MEM_VIRTUAL_TO_PHYSICAL(GXTest::test_buffer) >> 5;
     CGX_LOAD_BP_REG(ti3.hex);
-*/
+
     /*
     CGX_LOAD_BP_REG(BPMEM_BIAS << 24);  // ztex bias is 0
     ZTex2 ztex2{.hex = BPMEM_ZTEX2 << 24};
@@ -163,7 +163,7 @@ for (int i = 0; i < 600; i++) {
     ztex2.op = ZTexOp::Replace;
     CGX_LOAD_BP_REG(ztex2.hex);
     */
-/*
+
     TwoTevStageOrders tref{.hex = BPMEM_TREF << 24};
     tref.texmap0 = 0;
     tref.texcoord0 = 0;
@@ -187,7 +187,7 @@ for (int i = 0; i < 600; i++) {
     CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
     CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
     UVAT_group0 vat0{.Hex = 0};
-    vat0.PosElements = VA_TYPE_POS_XY;
+    vat0.PosElements = VA_TYPE_POS_XYZ;
     vat0.PosFormat = VA_FMT_F32;
     vat0.Tex0CoordElements = VA_TYPE_TEX_ST;
     vat0.Tex0CoordFormat = VA_FMT_F32;
@@ -199,29 +199,32 @@ for (int i = 0; i < 600; i++) {
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
     wgPipe->F32 = -1;
     wgPipe->F32 = -1;
+    wgPipe->F32 = .5;
     wgPipe->F32 = 0;
     wgPipe->F32 = 1;
 
     wgPipe->F32 = -1;
     wgPipe->F32 = +1;
+    wgPipe->F32 = .5;
     wgPipe->F32 = 0;
     wgPipe->F32 = 0;
 
     wgPipe->F32 = +1;
     wgPipe->F32 = +1;
+    wgPipe->F32 = .5;
     wgPipe->F32 = 1;
     wgPipe->F32 = 0;
 
     wgPipe->F32 = +1;
     wgPipe->F32 = -1;
+    wgPipe->F32 = .5;
     wgPipe->F32 = 1;
     wgPipe->F32 = 1;
     GX_End();
-*/
-  GXTest::Quad().ColorRGBA(0, 42, 42, 0).Draw();
+
     CGX_WaitForGpuToFinish();
 
-      GXTest::DebugDisplayEfbContents();
+    GXTest::DebugDisplayEfbContents();
 }
     SetPixelFormat(pixel_fmt);
   }
