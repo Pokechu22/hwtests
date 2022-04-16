@@ -14,9 +14,9 @@
 #include "gxtest/util.h"
 
 // Use all copy filter values (0-63*3), instead of only 64
-#define FULL_COPY_FILTER_COEFS true
+#define FULL_COPY_FILTER_COEFS false
 // Use all gamma values, instead of just 1.0 (0)
-#define FULL_GAMMA true
+#define FULL_GAMMA false
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
 // Also set the copy filter values for prev and next rows
@@ -111,17 +111,31 @@ static void FillEFB(PixelFormat pixel_fmt)
     SetCopyFilter(0, 64, 0);
     GXTest::CopyToTestBuffer(0, 0, 255, 7, {.clear = true});
 
+    GenMode genmode{.hex = BPMEM_GENMODE << 24};
+    genmode.numtexgens = 1;
+    genmode.numtevstages = 1 - 1;
+    CGX_LOAD_BP_REG(genmode.hex);
+
+    CGX_BEGIN_LOAD_XF_REGS(0x1008, 1);  // XFMEM_VTXSPECS
+    wgPipe->U32 = 1<<4;  // 1 texture coordinate
+    CGX_BEGIN_LOAD_XF_REGS(0x1009, 1);  // XFMEM_SETNUMCHAN
+    wgPipe->U32 = 0;
+    CGX_BEGIN_LOAD_XF_REGS(0x103f, 1);  // XFMEM_SETNUMTEXGENS
+    wgPipe->U32 = 1;
+    CGX_BEGIN_LOAD_XF_REGS(0x1040, 1);  // XFMEM_SETTEXMTXINFO
+    wgPipe->U32 = 0x280;  // regular texgen for tex0
+
     CGX_LOAD_BP_REG(BPMEM_TX_SETMODE0 << 24);
     CGX_LOAD_BP_REG(BPMEM_TX_SETMODE1 << 24);
     TexImage0 ti0{.hex = BPMEM_TX_SETIMAGE0 << 24};
-    ti0.width = 255;
-    ti0.height = 7;
+    ti0.width = 256 - 1;
+    ti0.height = 8 - 1;
     ti0.format = TextureFormat::RGBA8;
     CGX_LOAD_BP_REG(ti0.hex);
     // Assume that TexImage1 and TexImage2 (tmem-related)
     // are set properly by libogc's init
     TexImage3 ti3{.hex = BPMEM_TX_SETIMAGE3 << 24};
-    ti3.image_base = MEM_VIRTUAL_TO_PHYSICAL(GXTest::test_buffer);
+    ti3.image_base = MEM_VIRTUAL_TO_PHYSICAL(GXTest::test_buffer) >> 5;
     CGX_LOAD_BP_REG(ti3.hex);
 
     CGX_LOAD_BP_REG(BPMEM_BIAS << 24);  // ztex bias is 0
@@ -134,9 +148,20 @@ static void FillEFB(PixelFormat pixel_fmt)
     tref.texmap0 = 0;
     tref.texcoord0 = 0;
     tref.enable0 = true;
+    CGX_LOAD_BP_REG(tref.hex);
+
+    TCInfo tc_s{.hex = BPMEM_SU_SSIZE << 24};
+    tc_s.scale_minus_1 = 256 - 1;
+    CGX_LOAD_BP_REG(tc_s.hex);
+    TCInfo tc_t{.hex = BPMEM_SU_TSIZE << 24};
+    tc_t.scale_minus_1 = 8 - 1;
+    CGX_LOAD_BP_REG(tc_t.hex);
+
     // We don't actually care about what color the TEV produces here, so
     // we don't configure that specifically.
+
     CGX_SetViewport(0.0f, 0.0f, 256.0f, 8.0f, 0.0f, 1.0f);
+
     // Set the vertex format...
     CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
     CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
@@ -149,18 +174,17 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_CP_REG(0x80, 0x80000000);  // CP_VAT_REG_B: vcache enhance only
     CGX_LOAD_CP_REG(0x90, 0);  // CP_VAT_REG_C
 
+    // Actually draw the vertices
     wgPipe->U8 = 0x80;  // GX_DRAW_QUADS
     wgPipe->U16 = 4;  // 4 vertices
-    wgPipe->U32 = 0xff'ff'00'00;  // (-1, -1) / (0, 0)
-    wgPipe->U32 = 0xff'01'00'01;  // (-1, +1) / (0, 1)
-    wgPipe->U32 = 0x01'01'01'01;  // (+1, +1) / (1, 1)
-    wgPipe->U32 = 0x01'ff'01'00;  // (+1, -1) / (1, 0)
+    wgPipe->U32 = 0xff'ff'00'01;  // (-1, -1) / (0, 1)
+    wgPipe->U32 = 0xff'01'00'00;  // (-1, +1) / (0, 0)
+    wgPipe->U32 = 0x01'01'01'00;  // (+1, +1) / (1, 0)
+    wgPipe->U32 = 0x01'ff'01'01;  // (+1, -1) / (1, 1)
 
     SetPixelFormat(pixel_fmt);
 
     CGX_WaitForGpuToFinish();
-    for (int i = 0; i < 600; i++)
-      GXTest::DebugDisplayEfbContents();
   }
 }
 
@@ -444,18 +468,17 @@ void CheckEFB(PixelFormat pixel_fmt)
 
 int main()
 {
-  //network_init();
+  network_init();
   WPAD_Init();
 
   GXTest::Init();
-  //network_printf("FULL_COPY_FILTER_COEFS: %s\n", FULL_COPY_FILTER_COEFS ? "true" : "false");
-  //network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
-  //network_printf("FULL_PIXEL_FORMATS: %s\n", FULL_PIXEL_FORMATS ? "true" : "false");
+  network_printf("FULL_COPY_FILTER_COEFS: %s\n", FULL_COPY_FILTER_COEFS ? "true" : "false");
+  network_printf("FULL_GAMMA: %s\n", FULL_GAMMA ? "true" : "false");
+  network_printf("FULL_PIXEL_FORMATS: %s\n", FULL_PIXEL_FORMATS ? "true" : "false");
 
   for (PixelFormat pixel_fmt : PIXEL_FORMATS)
   {
     FillEFB(pixel_fmt);
-break;
     CheckEFB(pixel_fmt);
 #if FULL_COPY_FILTER_COEFS
     for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER_CUR; copy_filter_sum++)
@@ -494,9 +517,9 @@ break;
   }
 done:
 
-  //report_test_results();
-  //network_printf("Shutting down...\n");
-  //network_shutdown();
+  report_test_results();
+  network_printf("Shutting down...\n");
+  network_shutdown();
 
   return 0;
 }
