@@ -14,9 +14,9 @@
 #include "gxtest/util.h"
 
 // Use all copy filter values (0-63*3), instead of only 64
-#define FULL_COPY_FILTER_COEFS false
+#define FULL_COPY_FILTER_COEFS true
 // Use all gamma values, instead of just 1.0 (0)
-#define FULL_GAMMA false
+#define FULL_GAMMA true
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
 // Also set the copy filter values for prev and next rows
@@ -108,6 +108,9 @@ static void FillEFB(PixelFormat pixel_fmt)
   {
     // HACK: Since GX_PokeZ doesn't seem to work, we instead use an EFB copy and then
     // draw over it using the z-texture feature to set the depth buffer.
+    // TODO: This doesn't actually work on real hardware; it just uses the depth
+    // value from clearing here without updating based on the z-texture
+    // (or the depth of the quad I draw)
     SetCopyFilter(0, 64, 0);
     GXTest::CopyToTestBuffer(0, 0, 255, 7, {.clear = true});
 
@@ -198,8 +201,7 @@ static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Ga
 static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
 // These formats work on Dolphin and on real hardware
-//static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
-static const std::array<PixelFormat, 1> PIXEL_FORMATS = { PixelFormat::Z24 };
+static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
 #endif
 
 // Applies to current row
