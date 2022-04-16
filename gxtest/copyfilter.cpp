@@ -190,10 +190,10 @@ static void FillEFB(PixelFormat pixel_fmt)
     // Actually draw the vertices
     wgPipe->U8 = 0x80;  // GX_DRAW_QUADS
     wgPipe->U16 = 4;  // 4 vertices
-    wgPipe->U32 = 0xff'ff'00'00; wgPipe->U8 = 0x01;  // (-1, -1, 0) / (0, 1)
-    wgPipe->U32 = 0xff'01'00'00; wgPipe->U8 = 0x00;  // (-1, +1, 0) / (0, 0)
-    wgPipe->U32 = 0x01'01'00'01; wgPipe->U8 = 0x00;  // (+1, +1, 0) / (1, 0)
-    wgPipe->U32 = 0x01'ff'00'01; wgPipe->U8 = 0x01;  // (+1, -1, 0) / (1, 1)
+    wgPipe->U32 = 0xff'ff'01'00; wgPipe->U8 = 0x01;  // (-1, -1, 0) / (0, 1)
+    wgPipe->U32 = 0xff'01'01'00; wgPipe->U8 = 0x00;  // (-1, +1, 0) / (0, 0)
+    wgPipe->U32 = 0x01'01'01'01; wgPipe->U8 = 0x00;  // (+1, +1, 0) / (1, 0)
+    wgPipe->U32 = 0x01'ff'01'01; wgPipe->U8 = 0x01;  // (+1, -1, 0) / (1, 1)
 
     CGX_WaitForGpuToFinish();
 
