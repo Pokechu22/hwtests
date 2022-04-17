@@ -98,8 +98,7 @@ static void FillEFB(PixelFormat pixel_fmt)
   {
     for (u16 y = 0; y < 8; y++)
     {
-      for (int y2 = 0; y2 < 80; y2++)
-      CGX_PokeARGB(x, y+8*y2, GenerateEFBColor(x, y), pixel_fmt);
+      CGX_PokeARGB(x, y, GenerateEFBColor(x, y), pixel_fmt);
       // GX_PokeZ doesn't seem to work at all
       // CGX_PokeZ(x, y, GenerateEFBDepth(x, y), pixel_fmt);
     }
