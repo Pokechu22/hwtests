@@ -186,43 +186,42 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
     UVAT_group0 vat0{.Hex = 0};
     vat0.PosElements = VA_TYPE_POS_XYZ;
-    vat0.PosFormat = VA_FMT_F32;
+    vat0.PosFormat = VA_FMT_S8;
     vat0.Tex0CoordElements = VA_TYPE_TEX_ST;
-    vat0.Tex0CoordFormat = VA_FMT_F32;
+    vat0.Tex0CoordFormat = VA_FMT_S8;
     CGX_LOAD_CP_REG(0x70, vat0.Hex);
     CGX_LOAD_CP_REG(0x80, 0x80000000);  // CP_VAT_REG_B: vcache enhance only
     CGX_LOAD_CP_REG(0x90, 0);  // CP_VAT_REG_C
 
     // Actually draw the vertices
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-    wgPipe->F32 = -1;
-    wgPipe->F32 = -1;
-    wgPipe->F32 = .5;
-    wgPipe->F32 = 0;
-    wgPipe->F32 = 1;
+    wgPipe->S8 = -1;
+    wgPipe->S8 = -1;
+    wgPipe->S8 = 1;
+    wgPipe->S8 = 0;
+    wgPipe->S8 = 1;
 
-    wgPipe->F32 = -1;
-    wgPipe->F32 = +1;
-    wgPipe->F32 = .5;
-    wgPipe->F32 = 0;
-    wgPipe->F32 = 0;
+    wgPipe->S8 = -1;
+    wgPipe->S8 = +1;
+    wgPipe->S8 = 1;
+    wgPipe->S8 = 0;
+    wgPipe->S8 = 0;
 
-    wgPipe->F32 = +1;
-    wgPipe->F32 = +1;
-    wgPipe->F32 = .5;
-    wgPipe->F32 = 1;
-    wgPipe->F32 = 0;
+    wgPipe->S8 = +1;
+    wgPipe->S8 = +1;
+    wgPipe->S8 = 1;
+    wgPipe->S8 = 1;
+    wgPipe->S8 = 0;
 
-    wgPipe->F32 = +1;
-    wgPipe->F32 = -1;
-    wgPipe->F32 = .5;
-    wgPipe->F32 = 1;
-    wgPipe->F32 = 1;
+    wgPipe->S8 = +1;
+    wgPipe->S8 = -1;
+    wgPipe->S8 = 1;
+    wgPipe->S8 = 1;
+    wgPipe->S8 = 1;
     GX_End();
 
     CGX_WaitForGpuToFinish();
 
-    GXTest::DebugDisplayEfbContents();
     SetPixelFormat(pixel_fmt);
   }
 }
