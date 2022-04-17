@@ -14,13 +14,13 @@
 #include "gxtest/util.h"
 
 // Use all copy filter values (0-63*3), instead of only 64
-#define FULL_COPY_FILTER_COEFS false
+#define FULL_COPY_FILTER_COEFS true
 // Use all gamma values, instead of just 1.0 (0)
-#define FULL_GAMMA false
+#define FULL_GAMMA true
 // Use all pixel formats, instead of just the ones that work
 #define FULL_PIXEL_FORMATS false
 // Also set the copy filter values for prev and next rows
-#define CHECK_PREV_AND_NEXT false
+#define CHECK_PREV_AND_NEXT true
 
 struct CopyFilterTestContext
 {
@@ -108,13 +108,9 @@ static void FillEFB(PixelFormat pixel_fmt)
   {
     // HACK: Since GX_PokeZ doesn't seem to work, we instead use an EFB copy and then
     // draw over it using the z-texture feature to set the depth buffer.
-    // TODO: This doesn't actually work on real hardware; it just uses the depth
-    // value from clearing here without updating based on the z-texture
-    // (or the depth of the quad I draw)
     SetCopyFilter(0, 64, 0);
-    CGX_LOAD_BP_REG(BPMEM_CLEAR_AR << 24 | 0x00FF);
-    CGX_LOAD_BP_REG(BPMEM_CLEAR_GB << 24 | 0x00FF);
-    CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x420000);
+    // This value should be overridden, but it's recognizable if it shows up
+    CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 123456);
     GXTest::CopyToTestBuffer(0, 0, 255, 7, {.clear = true});
 
     AlphaTest alpha{.hex = BPMEM_ALPHACOMPARE << 24};
@@ -174,6 +170,7 @@ static void FillEFB(PixelFormat pixel_fmt)
     tc_t.scale_minus_1 = 8 - 1;
     CGX_LOAD_BP_REG(tc_t.hex);
 
+    // We don't care about the actual result here
     auto tev = CGXDefault<TevStageCombiner::ColorCombiner>(0);
     tev.d = TevColorArg::Half;
     CGX_LOAD_BP_REG(tev.hex);
@@ -184,10 +181,12 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
     CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
     UVAT_group0 vat0{.Hex = 0};
-    vat0.PosElements = VA_TYPE_POS_XY;
+    // NOTE: Using XY results in things not working for some reason.
+    // We need to supply a Z-value, even if it's not relevant for the final result.
+    vat0.PosElements = VA_TYPE_POS_XYZ;
     vat0.PosFormat = VA_FMT_S8;
     vat0.Tex0CoordElements = VA_TYPE_TEX_ST;
-    vat0.Tex0CoordFormat = VA_FMT_S8;
+    vat0.Tex0CoordFormat = VA_FMT_U8;
     CGX_LOAD_CP_REG(0x70, vat0.Hex);
     CGX_LOAD_CP_REG(0x80, 0x80000000);  // CP_VAT_REG_B: vcache enhance only
     CGX_LOAD_CP_REG(0x90, 0);  // CP_VAT_REG_C
@@ -196,23 +195,27 @@ static void FillEFB(PixelFormat pixel_fmt)
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
     wgPipe->S8 = -1;
     wgPipe->S8 = -1;
-    wgPipe->S8 = 0;
     wgPipe->S8 = 1;
+    wgPipe->U8 = 0;
+    wgPipe->U8 = 1;
 
     wgPipe->S8 = -1;
     wgPipe->S8 = +1;
-    wgPipe->S8 = 0;
-    wgPipe->S8 = 0;
+    wgPipe->S8 = 1;
+    wgPipe->U8 = 0;
+    wgPipe->U8 = 0;
 
     wgPipe->S8 = +1;
     wgPipe->S8 = +1;
     wgPipe->S8 = 1;
-    wgPipe->S8 = 0;
+    wgPipe->U8 = 1;
+    wgPipe->U8 = 0;
 
     wgPipe->S8 = +1;
     wgPipe->S8 = -1;
     wgPipe->S8 = 1;
-    wgPipe->S8 = 1;
+    wgPipe->U8 = 1;
+    wgPipe->U8 = 1;
     GX_End();
 
     CGX_WaitForGpuToFinish();
@@ -231,8 +234,7 @@ static const std::array<GammaCorrection, 1> GAMMA_VALUES = { GammaCorrection::Ga
 static const std::array<PixelFormat, 8> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::RGB565_Z16, PixelFormat::Z24, PixelFormat::Y8, PixelFormat::U8, PixelFormat::V8, PixelFormat::YUV420 };
 #else
 // These formats work on Dolphin and on real hardware
-//static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
-static const std::array<PixelFormat, 1> PIXEL_FORMATS = { PixelFormat::Z24 };
+static const std::array<PixelFormat, 3> PIXEL_FORMATS = { PixelFormat::RGB8_Z24, PixelFormat::RGBA6_Z24, PixelFormat::Z24 };
 #endif
 
 // Applies to current row
@@ -513,7 +515,6 @@ int main()
   {
     FillEFB(pixel_fmt);
     CheckEFB(pixel_fmt);
-    break;
 #if FULL_COPY_FILTER_COEFS
     for (u8 copy_filter_sum = 0; copy_filter_sum <= MAX_COPY_FILTER_CUR; copy_filter_sum++)
 #else
