@@ -67,7 +67,7 @@ static void SetPixelFormat(PixelFormat pixel_fmt)
   PEControl ctrl{.hex = BPMEM_ZCOMPARE << 24};
   ctrl.pixel_format = pixel_fmt;
   ctrl.zformat = DepthFormat::ZLINEAR;
-  ctrl.early_ztest = true;
+  ctrl.early_ztest = false;
   CGX_LOAD_BP_REG(ctrl.hex);
 }
 
@@ -116,8 +116,8 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_BP_REG(BPMEM_CLEAR_AR << 24 | 0x00FF);
     CGX_LOAD_BP_REG(BPMEM_CLEAR_GB << 24 | 0x00FF);
     CGX_LOAD_BP_REG(BPMEM_CLEAR_Z << 24 | 0x420000);
-    GXTest::CopyToTestBuffer(0, 32, 255, 32+7, {.clear = true});
-for (int i = 0; i < 600; i++) {
+    GXTest::CopyToTestBuffer(0, 0, 255, 7, {.clear = true});
+
     AlphaTest alpha{.hex = BPMEM_ALPHACOMPARE << 24};
     alpha.comp0 = CompareMode::Always;
     alpha.comp1 = CompareMode::Always;
@@ -156,13 +156,11 @@ for (int i = 0; i < 600; i++) {
     ti3.image_base = MEM_VIRTUAL_TO_PHYSICAL(GXTest::test_buffer) >> 5;
     CGX_LOAD_BP_REG(ti3.hex);
 
-    /*
     CGX_LOAD_BP_REG(BPMEM_BIAS << 24);  // ztex bias is 0
     ZTex2 ztex2{.hex = BPMEM_ZTEX2 << 24};
     ztex2.type = ZTexFormat::U24;
     ztex2.op = ZTexOp::Replace;
     CGX_LOAD_BP_REG(ztex2.hex);
-    */
 
     TwoTevStageOrders tref{.hex = BPMEM_TREF << 24};
     tref.texmap0 = 0;
@@ -178,10 +176,10 @@ for (int i = 0; i < 600; i++) {
     CGX_LOAD_BP_REG(tc_t.hex);
 
     auto tev = CGXDefault<TevStageCombiner::ColorCombiner>(0);
-    tev.d = TevColorArg::TexColor;
+    tev.d = TevColorArg::Half;
     CGX_LOAD_BP_REG(tev.hex);
 
-    CGX_SetViewport(0.0f, 0.0f, 512.0f, 256.0f, 0.0f, 1.0f);
+    CGX_SetViewport(0.0f, 0.0f, 256.0f, 8.0f, 0.0f, 1.0f);
 
     // Set the vertex format...
     CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
@@ -225,7 +223,6 @@ for (int i = 0; i < 600; i++) {
     CGX_WaitForGpuToFinish();
 
     GXTest::DebugDisplayEfbContents();
-}
     SetPixelFormat(pixel_fmt);
   }
 }
