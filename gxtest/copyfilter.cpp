@@ -184,7 +184,7 @@ static void FillEFB(PixelFormat pixel_fmt)
     CGX_LOAD_CP_REG(0x50, VTXATTR_DIRECT << 9);  // VCD_LO: direct position only
     CGX_LOAD_CP_REG(0x60, VTXATTR_DIRECT << 0);  // VCD_HI: direct texcoord0 only
     UVAT_group0 vat0{.Hex = 0};
-    vat0.PosElements = VA_TYPE_POS_XYZ;
+    vat0.PosElements = VA_TYPE_POS_XY;
     vat0.PosFormat = VA_FMT_S8;
     vat0.Tex0CoordElements = VA_TYPE_TEX_ST;
     vat0.Tex0CoordFormat = VA_FMT_S8;
@@ -196,25 +196,21 @@ static void FillEFB(PixelFormat pixel_fmt)
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
     wgPipe->S8 = -1;
     wgPipe->S8 = -1;
-    wgPipe->S8 = 1;
     wgPipe->S8 = 0;
     wgPipe->S8 = 1;
 
     wgPipe->S8 = -1;
     wgPipe->S8 = +1;
-    wgPipe->S8 = 1;
     wgPipe->S8 = 0;
     wgPipe->S8 = 0;
 
     wgPipe->S8 = +1;
     wgPipe->S8 = +1;
-    wgPipe->S8 = 1;
     wgPipe->S8 = 1;
     wgPipe->S8 = 0;
 
     wgPipe->S8 = +1;
     wgPipe->S8 = -1;
-    wgPipe->S8 = 1;
     wgPipe->S8 = 1;
     wgPipe->S8 = 1;
     GX_End();
